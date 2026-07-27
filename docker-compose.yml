@@ -1,0 +1,14 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: nest_order_api
+    ports:
+      - "5432:5432"
+    volumes:
+      - nest-order-api-db:/var/lib/postgresql/data
+
+volumes:
+  nest-order-api-db:
