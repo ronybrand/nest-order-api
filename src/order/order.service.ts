@@ -14,8 +14,9 @@ import { CustomerService } from '../customer/customer.service';
 import { ErrorCode } from '../common/exceptions/error-code.enum';
 import { InvalidInputException, ResourceNotFoundException } from '../common/exceptions/domain.exception';
 import { FilterCriterion } from '../common/filter/search-request.dto';
+import { Operator } from '../common/filter/operator.enum';
 import { Page, SearchService } from '../common/filter/search.service';
-import { currentUsername } from '../common/audit/current-user';
+import { currentUsername, isCurrentUserAdmin, isSystemContext } from '../common/audit/current-user';
 import { ORDER_STATUS_CHANGED_EVENT, OrderStatusChangedEvent } from './order-status-changed.event';
 import { OrderConstants } from './order.constants';
 
@@ -132,15 +133,33 @@ export class OrderService {
     page = 0,
     size = 20,
   ): Promise<Page<Order>> {
-    return this.searchService.search(this.orderRepository, 'order', criteria, sort, order, page, size);
+    const effectiveCriteria = this.scopeCriteriaToOwnerIfNeeded(criteria);
+    return this.searchService.search(this.orderRepository, 'order', effectiveCriteria, sort, order, page, size);
+  }
+
+  /**
+   * ROLE_USER só enxerga pedidos que criou; ROLE_ADMIN e contexto de
+   * sistema (jobs internos, testes) enxergam tudo. Ver checklist de
+   * ownership em AGENTS.md.
+   */
+  private scopeCriteriaToOwnerIfNeeded(criteria: FilterCriterion[]): FilterCriterion[] {
+    if (isSystemContext() || isCurrentUserAdmin()) {
+      return criteria;
+    }
+    return [...criteria, { field: 'createdBy', operator: Operator.EQ, value: currentUsername() }];
   }
 
   private async findEntityByIdOrThrow(id: string): Promise<Order> {
     const order = await this.orderRepository.findOneBy({ id, deletedAt: IsNull() });
-    if (!order) {
+    if (!order || !this.canAccessOrder(order)) {
       throw new ResourceNotFoundException(ErrorCode.RESOURCE_NOT_FOUND_ORDER, `Order ${id} not found`, { id });
     }
     return order;
+  }
+
+  /** Posse inválida é tratada como 404, não 403 (não revela existência do recurso). */
+  private canAccessOrder(order: Order): boolean {
+    return isSystemContext() || isCurrentUserAdmin() || order.createdBy === currentUsername();
   }
 
   private findItemOrThrow(order: Order, itemId: string): Item {
