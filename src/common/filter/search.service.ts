@@ -67,12 +67,13 @@ export class SearchService {
       qb.andWhere(`${alias}.deletedAt IS NULL`);
     }
 
+    let paramIndex = 0;
     for (const criterion of criteria) {
       if (!filterableColumns.has(criterion.field)) {
         // Filtro por campo inexistente é ignorado silenciosamente (nunca erro).
         continue;
       }
-      this.applyFilter(qb, alias, criterion);
+      this.applyFilter(qb, alias, criterion, paramIndex++);
     }
 
     if (sort) {
@@ -106,8 +107,9 @@ export class SearchService {
     qb: SelectQueryBuilder<T>,
     alias: string,
     criterion: FilterCriterion,
+    paramIndex: number,
   ): void {
-    const param = `${criterion.field}_${Math.random().toString(36).slice(2, 8)}`;
+    const param = `${criterion.field}_${paramIndex}`;
     const column = `${alias}.${criterion.field}`;
 
     switch (criterion.operator) {
