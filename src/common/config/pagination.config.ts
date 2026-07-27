@@ -1,5 +1,4 @@
-export const PaginationConfig = {
-  defaultPage: Number(process.env.PAGINATION_DEFAULT_PAGE ?? 0),
-  defaultSize: Number(process.env.PAGINATION_DEFAULT_SIZE ?? 20),
-  maxSize: Number(process.env.PAGINATION_MAX_SIZE ?? 100),
-};
+import { envConfig } from '../../config/env.config';
+
+/** Delegado ao factory central de config (src/config/env.config.ts) para evitar leitura duplicada de env vars. */
+export const PaginationConfig = envConfig().pagination;
