@@ -17,6 +17,7 @@ import { FilterCriterion } from '../common/filter/search-request.dto';
 import { Page, SearchService } from '../common/filter/search.service';
 import { currentUsername } from '../common/audit/current-user';
 import { ORDER_STATUS_CHANGED_EVENT, OrderStatusChangedEvent } from './order-status-changed.event';
+import { OrderConstants } from './order.constants';
 
 @Injectable()
 export class OrderService {
@@ -59,7 +60,7 @@ export class OrderService {
     const order = await this.findEntityByIdOrThrow(orderId);
     this.ensureOrderIsEditableOrThrow(order);
 
-    if (order.items.length >= 200) {
+    if (order.items.length >= OrderConstants.MAX_ITEMS_PER_ORDER) {
       throw new InvalidInputException(
         ErrorCode.VALIDATION_CONSTRAINT_VIOLATION,
         `Order ${orderId} already has the maximum number of items`,
