@@ -70,7 +70,7 @@
     "transform": {
       "^.+\\.(t|j)s$": "ts-jest"
     },
-    "collectCoverageFrom": ["**/*.service.ts"],
+    "collectCoverageFrom": ["**/*.service.ts", "**/*.controller.ts"],
     "coverageDirectory": "../coverage",
     "testEnvironment": "node"
   }

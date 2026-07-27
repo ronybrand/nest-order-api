@@ -12,7 +12,10 @@ async function bootstrap(): Promise<void> {
 
   app.use(helmet());
   app.enableCors({
-    origin: (config.get<string>('CORS_ALLOWED_ORIGINS') ?? '').split(',').filter(Boolean),
+    origin: (config.get<string>('CORS_ALLOWED_ORIGINS') ?? '')
+      .split(',')
+      .map((origin) => origin.trim())
+      .filter(Boolean),
   });
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }));
   app.useGlobalFilters(new GlobalExceptionFilter());
