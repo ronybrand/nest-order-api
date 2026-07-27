@@ -67,6 +67,7 @@ export class OrderController {
   }
 
   @Delete(':id')
+  @Roles(Role.ADMIN)
   @HttpCode(HttpStatus.NO_CONTENT)
   delete(@Param('id', ParseUUIDPipe) id: string): Promise<void> {
     return this.orderService.delete(id);
@@ -87,6 +88,7 @@ export class OrderController {
   }
 
   @Delete(':orderId/items/:itemId')
+  @Roles(Role.ADMIN)
   removeItem(
     @Param('orderId', ParseUUIDPipe) orderId: string,
     @Param('itemId', ParseUUIDPipe) itemId: string,
@@ -95,11 +97,13 @@ export class OrderController {
   }
 
   @Post(':id/confirm')
+  @Roles(Role.ADMIN)
   confirm(@Param('id', ParseUUIDPipe) id: string): Promise<OrderResponseDto> {
     return this.orderService.confirm(id);
   }
 
   @Post(':id/cancel')
+  @Roles(Role.ADMIN)
   cancel(@Param('id', ParseUUIDPipe) id: string): Promise<OrderResponseDto> {
     return this.orderService.cancel(id);
   }
