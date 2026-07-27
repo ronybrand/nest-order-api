@@ -22,7 +22,8 @@ import { Roles } from '../common/auth/roles.decorator';
 import { Role } from '../common/auth/role.enum';
 import { SearchRequestDto } from '../common/filter/search-request.dto';
 import { SearchService } from '../common/filter/search.service';
-import { CustomerResponseDto as ResponseDto } from './dto/customer-response.dto';
+import { parseOrderParam, parsePageParam, parseSizeParam } from '../common/filter/pagination-query.util';
+import { toPageResponse } from '../common/filter/page-response.util';
 
 @ApiTags('customers')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -46,11 +47,11 @@ export class CustomerController {
     const page = await this.customerService.search(
       criteria,
       query.sort as string | undefined,
-      (query.order as 'asc' | 'desc') ?? 'asc',
-      Number(query.page ?? 0),
-      Number(query.size ?? 20),
+      parseOrderParam(query.order),
+      parsePageParam(query.page),
+      parseSizeParam(query.size),
     );
-    return { ...page, content: page.content.map((c) => ResponseDto.from(c)) };
+    return toPageResponse(page, CustomerResponseDto.from);
   }
 
   @Post('search')
@@ -58,7 +59,7 @@ export class CustomerController {
   async searchByPostMethod(@Body() body: SearchRequestDto) {
     const criteria = this.searchService.parseBodyFilters(body);
     const page = await this.customerService.search(criteria, body.sort, body.order, body.page, body.size);
-    return { ...page, content: page.content.map((c) => ResponseDto.from(c)) };
+    return toPageResponse(page, CustomerResponseDto.from);
   }
 
   @Get(':id')
