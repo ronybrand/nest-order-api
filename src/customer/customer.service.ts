@@ -1,6 +1,6 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { IsNull, Repository } from 'typeorm';
 import { Customer } from './customer.entity';
 import { CustomerRequestDto } from './dto/customer-request.dto';
 import { CustomerResponseDto } from './dto/customer-response.dto';
@@ -59,7 +59,7 @@ export class CustomerService {
 
   /** Uso interno de outros domínios (ex. OrderService ao criar um pedido). */
   async findEntityByIdOrThrow(id: string): Promise<Customer> {
-    const customer = await this.customerRepository.findOneBy({ id });
+    const customer = await this.customerRepository.findOneBy({ id, deletedAt: IsNull() });
     if (!customer) {
       throw new ResourceNotFoundException(ErrorCode.RESOURCE_NOT_FOUND_CUSTOMER, `Customer ${id} not found`, {
         id,

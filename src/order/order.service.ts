@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import { Repository } from 'typeorm';
+import { IsNull, Repository } from 'typeorm';
 import { StringUtils } from '../common/util/string-utils';
 import { Order } from './order.entity';
 import { Item } from './item.entity';
@@ -135,7 +135,7 @@ export class OrderService {
   }
 
   private async findEntityByIdOrThrow(id: string): Promise<Order> {
-    const order = await this.orderRepository.findOneBy({ id });
+    const order = await this.orderRepository.findOneBy({ id, deletedAt: IsNull() });
     if (!order) {
       throw new ResourceNotFoundException(ErrorCode.RESOURCE_NOT_FOUND_ORDER, `Order ${id} not found`, { id });
     }

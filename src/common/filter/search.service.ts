@@ -63,6 +63,10 @@ export class SearchService {
     const metadata = repository.metadata;
     const filterableColumns = new Set(metadata.columns.map((c) => c.propertyName));
 
+    if (filterableColumns.has('deletedAt')) {
+      qb.andWhere(`${alias}.deletedAt IS NULL`);
+    }
+
     for (const criterion of criteria) {
       if (!filterableColumns.has(criterion.field)) {
         // Filtro por campo inexistente é ignorado silenciosamente (nunca erro).
