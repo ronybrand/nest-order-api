@@ -32,3 +32,18 @@ export function maskSensitive<T extends object>(instance: T): Record<string, unk
   }
   return masked;
 }
+
+/**
+ * Mascaramento parcial de e-mail (`a***@example.com`) para logs que precisam
+ * permanecer legíveis/rastreáveis sem expor o endereço completo. Use esta
+ * função em vez de reimplementar mascaramento de e-mail localmente em um
+ * service — infra central única, ver `Sensitive()` acima.
+ */
+export function maskEmail(email: string): string {
+  const [local, domain] = email.split('@');
+  if (!domain) {
+    return '***';
+  }
+  const visible = local.slice(0, 1);
+  return `${visible}***@${domain}`;
+}

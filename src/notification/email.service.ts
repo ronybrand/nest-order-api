@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { OrderStatusChangedEvent } from '../order/order-status-changed.event';
+import { maskEmail } from '../common/security/sensitive.decorator';
 
 /**
  * Stub de envio de e-mail. Numa integração real, plugue um provedor
@@ -12,7 +13,7 @@ export class EmailService {
 
   async sendOrderStatusEmail(event: OrderStatusChangedEvent): Promise<void> {
     this.logger.log(
-      `Sending order status email: orderId=${event.orderId}, to=${event.customerEmail}, ` +
+      `Sending order status email: orderId=${event.orderId}, to=${maskEmail(event.customerEmail)}, ` +
         `${event.oldStatus} -> ${event.newStatus}`,
     );
   }
