@@ -22,3 +22,6 @@ npm-debug.log*
 
 # OS
 .DS_Store
+
+# skills (versionadas em repositório privado à parte)
+.claude/skills/

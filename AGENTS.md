@@ -1,7 +1,7 @@
 # Instruções para agentes de código neste repositório
 
-Antes de editar qualquer arquivo em `src/`, invoque a skill `nest-feature`
-(`.claude/skills/nest-feature/SKILL.md`), que contém as convenções completas de
+Antes de editar qualquer arquivo em `src/`, invoque a skill `nestjs-feature`
+(`.claude/skills/nestjs-feature/SKILL.md`), que contém as convenções completas de
 desenvolvimento deste projeto.
 
 A skill é a fonte de referência para arquitetura, implementação, testes, segurança e
@@ -61,5 +61,5 @@ de código existente.
 - [ ] Checagens de nulo/vazio usam `StringUtils.isBlank`/`isNotBlank` (`common/util/string-utils.ts`), nunca a negação do oposto nem duas condições manuais. Para regra de negócio sem helper pronto, a condição foi extraída num método nomeado afirmativamente (ex. `isEditable()`) em vez de negação repetida nos pontos de uso.
 
 O detalhamento completo de cada item (motivação, exceções válidas, decisões arquiteturais e
-exemplos) está documentado na skill `nest-feature`. Este arquivo é apenas um checklist
+exemplos) está documentado na skill `nestjs-feature`. Este arquivo é apenas um checklist
 operacional utilizado antes de considerar uma tarefa concluída.
