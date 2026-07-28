@@ -122,6 +122,15 @@ não-vazio).
 | `totalAmount` | decimal |
 | `changedAt` | datetime |
 
+O `OrderStatusListener` (`EventEmitter2`, in-process) publica o evento na fila RabbitMQ
+`order.status.changed` (`RabbitMqPublisher`); o `RabbitMqConsumer` a consome — embutido no
+mesmo processo da API, reconectando com retry em background se o broker cair, sem derrubar
+o boot nem os testes e2e — e dispara o e-mail via `EmailService` (`nodemailer`/SMTP),
+renderizado com Handlebars a partir de
+`src/notification/templates/order-status-changed.hbs`. Em dev/local, `SMTP_HOST` aponta
+para o Mailpit (`docker compose up mailpit`) — nenhum e-mail real sai, inspecionável em
+`http://localhost:8025`.
+
 ### Catálogo de erros
 
 **Validação (400)**
@@ -166,22 +175,30 @@ privado à parte — não está incluída neste repositório público.
 
 ```bash
 cp .env.example .env
-docker compose up -d          # sobe PostgreSQL local
+docker compose up -d          # sobe PostgreSQL, RabbitMQ e Mailpit locais
 npm install
 npm run migration:run         # aplica o schema (customers/orders/items)
 npm run start:dev
 ```
 
+- RabbitMQ Management UI (guest/guest): `http://localhost:15672`
+- Mailpit Web UI (inspecionar e-mails recebidos): `http://localhost:8025`
+
 A API sobe em `http://localhost:3000`. Autenticação é via JWT (RS256) validado contra
 `JWT_PUBLIC_KEY_PATH`/`JWT_AUDIENCE` — aponte para o provedor OIDC do seu ambiente (ex.
 Keycloak) antes de chamar qualquer endpoint protegido.
 
-## Testes
+## Testes e qualidade
 
 ```bash
 npm run test        # unitários (*.service.spec.ts) — sem Docker
 npm run test:e2e     # ponta a ponta — requer Docker (Testcontainers)
+npm run verify       # gate local único: lint (sem warning) → build → cobertura → e2e
 ```
+
+`npm run verify` reproduz o `ci.yml` num único comando local. Cobertura mínima configurada
+em `coverageThreshold` (`package.json`): branches 85% / functions 90% / lines 90% /
+statements 90%.
 
 ## Endpoints
 

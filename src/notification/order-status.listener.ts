@@ -1,28 +1,26 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
 import { ORDER_STATUS_CHANGED_EVENT, OrderStatusChangedEvent } from '../order/order-status-changed.event';
-import { EmailService } from './email.service';
+import { RabbitMqPublisher } from './rabbitmq.publisher';
 
 /**
- * Consome OrderStatusChangedEvent de forma assíncrona (fora do ciclo de
- * request/response do controller) e dispara a notificação por e-mail.
- * Equivalente ao par Spring @TransactionalEventListener + RabbitMQ do
- * projeto de referência; aqui simplificado para EventEmitter2 in-process.
- * Se o volume justificar desacoplamento entre processos, troque o emit por
- * publish numa fila (ex. BullMQ) sem alterar o service que dispara o evento.
+ * Consome OrderStatusChangedEvent do EventEmitter2 in-process (fora do ciclo de
+ * request/response do controller) e publica no RabbitMQ para processamento assíncrono
+ * entre processos. O envio de e-mail em si acontece em `RabbitMqConsumer`, do lado
+ * consumidor da fila.
  */
 @Injectable()
 export class OrderStatusListener {
   private readonly logger = new Logger(OrderStatusListener.name);
 
-  constructor(private readonly emailService: EmailService) {}
+  constructor(private readonly publisher: RabbitMqPublisher) {}
 
   @OnEvent(ORDER_STATUS_CHANGED_EVENT, { async: true })
   async handleOrderStatusChanged(event: OrderStatusChangedEvent): Promise<void> {
     try {
-      await this.emailService.sendOrderStatusEmail(event);
+      await this.publisher.publish(event);
     } catch (error) {
-      this.logger.error(`Failed to send order status email: orderId=${event.orderId}`, error as Error);
+      this.logger.error(`Failed to publish order status event: orderId=${event.orderId}`, error as Error);
     }
   }
 }
