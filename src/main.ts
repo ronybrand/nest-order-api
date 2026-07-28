@@ -19,9 +19,19 @@ async function bootstrap(): Promise<void> {
   });
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }));
   app.useGlobalFilters(new GlobalExceptionFilter());
+  app.enableShutdownHooks();
 
   const port = config.get<number>('PORT') ?? 3000;
-  await app.listen(port);
+  const server = await app.listen(port);
+
+  ['SIGTERM', 'SIGINT'].forEach((signal) => {
+    process.on(signal, () => {
+      server.close(async () => {
+        await app.close();
+        process.exit(0);
+      });
+    });
+  });
 }
 
 bootstrap();
