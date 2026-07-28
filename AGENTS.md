@@ -53,7 +53,8 @@ de código existente.
 
 ## Antes de considerar a mudança pronta
 
-- [ ] `npm run lint` e `npx tsc --noEmit` executados sem erro.
+- [ ] `npm run verify` (lint sem warning → build → cobertura → e2e) executado sem erro —
+  gate local único.
 - [ ] Testes relevantes executados (`npx jest <arquivo>`), não apenas compilados.
 - [ ] Falhas conhecidas da infraestrutura de testes (Docker/Testcontainers, ambiente local) foram descartadas antes de concluir que existe um defeito na implementação.
 - [ ] Toda migration nova foi revisada manualmente (ver checklist na skill); `down()` implementado de verdade, não um stub vazio.
