@@ -26,12 +26,19 @@ export class EmailService {
     );
 
     const smtp = this.configService.get<EnvConfig['smtp']>('env.smtp')!;
-    await this.getTransporter(smtp).sendMail({
-      from: smtp.from,
-      to: event.customerEmail,
-      subject,
-      html: buildOrderStatusEmailHtml(event),
-    });
+    try {
+      await this.getTransporter(smtp).sendMail({
+        from: smtp.from,
+        to: event.customerEmail,
+        subject,
+        html: buildOrderStatusEmailHtml(event),
+      });
+    } catch (error) {
+      // Discard the cached transporter so the next attempt reconnects instead of reusing a
+      // connection that may be stale/broken (e.g. after the SMTP server dropped it).
+      this.transporter = undefined;
+      throw error;
+    }
   }
 
   private getTransporter(smtp: EnvConfig['smtp']): nodemailer.Transporter {

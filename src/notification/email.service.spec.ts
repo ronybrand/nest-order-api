@@ -43,6 +43,28 @@ describe('EmailService', () => {
     );
   });
 
+  it('discards the cached transporter after a send failure so the next attempt reconnects', async () => {
+    sendMailMock.mockRejectedValueOnce(new Error('SMTP connection reset'));
+
+    const event = new OrderStatusChangedEvent(
+      'order-3',
+      'carol@example.com',
+      'Carol',
+      OrderStatus.OPEN,
+      OrderStatus.CONFIRMED,
+      '75.00',
+      new Date(),
+    );
+
+    const callsBefore = (nodemailer.createTransport as jest.Mock).mock.calls.length;
+
+    await expect(service.sendOrderStatusEmail(event)).rejects.toThrow('SMTP connection reset');
+    await service.sendOrderStatusEmail(event);
+
+    expect((nodemailer.createTransport as jest.Mock).mock.calls.length - callsBefore).toBe(2);
+    expect(sendMailMock).toHaveBeenCalledTimes(2);
+  });
+
   it('masks an email with no domain as ***', async () => {
     const event = new OrderStatusChangedEvent(
       'order-2',

@@ -1,6 +1,6 @@
 import { ConfigService } from '@nestjs/config';
 import * as amqp from 'amqplib';
-import { RabbitMqConsumer } from './rabbitmq.consumer';
+import { RabbitMqConsumer, ORDER_STATUS_CHANGED_DLQ, MAX_RETRIES } from './rabbitmq.consumer';
 import { ORDER_STATUS_CHANGED_QUEUE } from './rabbitmq.publisher';
 import { EmailService } from './email.service';
 import { OrderStatusChangedEvent } from '../order/order-status-changed.event';
@@ -31,6 +31,7 @@ function buildChannel() {
     consume: jest.fn().mockResolvedValue(undefined),
     ack: jest.fn(),
     nack: jest.fn(),
+    sendToQueue: jest.fn(),
     close: jest.fn().mockResolvedValue(undefined),
   };
 }
@@ -47,8 +48,14 @@ function buildConnection(channel: ReturnType<typeof buildChannel>) {
   };
 }
 
-function buildMessage(event: OrderStatusChangedEvent): amqp.ConsumeMessage {
-  return { content: Buffer.from(JSON.stringify(event)) } as unknown as amqp.ConsumeMessage;
+function buildMessage(
+  event: OrderStatusChangedEvent,
+  headers: Record<string, unknown> = {},
+): amqp.ConsumeMessage {
+  return {
+    content: Buffer.from(JSON.stringify(event)),
+    properties: { headers },
+  } as unknown as amqp.ConsumeMessage;
 }
 
 async function flush(times = 10): Promise<void> {
@@ -80,7 +87,14 @@ describe('RabbitMqConsumer', () => {
     consumer.onModuleInit();
     await flush();
 
-    expect(channel.assertQueue).toHaveBeenCalledWith(ORDER_STATUS_CHANGED_QUEUE, { durable: true });
+    expect(channel.assertQueue).toHaveBeenCalledWith(ORDER_STATUS_CHANGED_DLQ, { durable: true });
+    expect(channel.assertQueue).toHaveBeenCalledWith(ORDER_STATUS_CHANGED_QUEUE, {
+      durable: true,
+      arguments: {
+        'x-dead-letter-exchange': '',
+        'x-dead-letter-routing-key': ORDER_STATUS_CHANGED_DLQ,
+      },
+    });
     expect(channel.prefetch).toHaveBeenCalledWith(10);
     expect(channel.consume).toHaveBeenCalledWith(ORDER_STATUS_CHANGED_QUEUE, expect.any(Function));
   });
@@ -103,22 +117,122 @@ describe('RabbitMqConsumer', () => {
     expect(channel.nack).not.toHaveBeenCalled();
   });
 
-  it('nacks with requeue when sending the email fails', async () => {
+  it('republishes with an incremented retry header and acks the original when sending the email fails', async () => {
+    jest.useFakeTimers();
     const channel = buildChannel();
     const connection = buildConnection(channel);
     (amqp.connect as jest.Mock).mockResolvedValue(connection);
     emailService.sendOrderStatusEmail.mockRejectedValue(new Error('SMTP down'));
 
     consumer.onModuleInit();
+    await jest.advanceTimersByTimeAsync(0);
+
+    const consumeCallback = channel.consume.mock.calls[0][1] as (message: amqp.ConsumeMessage) => void;
+    const event = buildEvent();
+    const message = buildMessage(event, { 'x-retry-count': 1 });
+    consumeCallback(message);
+    await jest.advanceTimersByTimeAsync(5_000);
+
+    expect(channel.sendToQueue).toHaveBeenCalledWith(
+      ORDER_STATUS_CHANGED_QUEUE,
+      message.content,
+      expect.objectContaining({
+        persistent: true,
+        contentType: 'application/json',
+        headers: { 'x-retry-count': 2 },
+      }),
+    );
+    expect(channel.ack).toHaveBeenCalledWith(message);
+    expect(channel.nack).not.toHaveBeenCalled();
+  });
+
+  it('sends the message to the DLQ once the retry limit is exceeded', async () => {
+    jest.useFakeTimers();
+    const channel = buildChannel();
+    const connection = buildConnection(channel);
+    (amqp.connect as jest.Mock).mockResolvedValue(connection);
+    emailService.sendOrderStatusEmail.mockRejectedValue(new Error('SMTP down'));
+
+    consumer.onModuleInit();
+    await jest.advanceTimersByTimeAsync(0);
+
+    const consumeCallback = channel.consume.mock.calls[0][1] as (message: amqp.ConsumeMessage) => void;
+    const message = buildMessage(buildEvent(), { 'x-retry-count': MAX_RETRIES });
+    consumeCallback(message);
+    await jest.advanceTimersByTimeAsync(5_000);
+
+    expect(channel.nack).toHaveBeenCalledWith(message, false, false);
+    expect(channel.sendToQueue).not.toHaveBeenCalled();
+    expect(channel.ack).not.toHaveBeenCalled();
+  });
+
+  it('sends a malformed message straight to the DLQ without retrying', async () => {
+    const channel = buildChannel();
+    const connection = buildConnection(channel);
+    (amqp.connect as jest.Mock).mockResolvedValue(connection);
+
+    consumer.onModuleInit();
     await flush();
 
     const consumeCallback = channel.consume.mock.calls[0][1] as (message: amqp.ConsumeMessage) => void;
-    const message = buildMessage(buildEvent());
+    const message = { content: Buffer.from('not-json'), properties: { headers: {} } } as unknown as amqp.ConsumeMessage;
     consumeCallback(message);
     await flush();
 
-    expect(channel.nack).toHaveBeenCalledWith(message, false, true);
-    expect(channel.ack).not.toHaveBeenCalled();
+    expect(channel.nack).toHaveBeenCalledWith(message, false, false);
+    expect(channel.sendToQueue).not.toHaveBeenCalled();
+    expect(emailService.sendOrderStatusEmail).not.toHaveBeenCalled();
+  });
+
+  it('sends an event missing required fields straight to the DLQ without retrying', async () => {
+    const channel = buildChannel();
+    const connection = buildConnection(channel);
+    (amqp.connect as jest.Mock).mockResolvedValue(connection);
+
+    consumer.onModuleInit();
+    await flush();
+
+    const consumeCallback = channel.consume.mock.calls[0][1] as (message: amqp.ConsumeMessage) => void;
+    const invalidPayload = { orderId: 'order-1' };
+    const message = {
+      content: Buffer.from(JSON.stringify(invalidPayload)),
+      properties: { headers: {} },
+    } as unknown as amqp.ConsumeMessage;
+    consumeCallback(message);
+    await flush();
+
+    expect(channel.nack).toHaveBeenCalledWith(message, false, false);
+    expect(emailService.sendOrderStatusEmail).not.toHaveBeenCalled();
+  });
+
+  it('reconnects when the connection is closed unexpectedly', async () => {
+    const channel = buildChannel();
+    const connection = buildConnection(channel);
+    (amqp.connect as jest.Mock).mockResolvedValue(connection);
+
+    consumer.onModuleInit();
+    await flush();
+    expect(amqp.connect).toHaveBeenCalledTimes(1);
+
+    (connection as unknown as { emit: (event: string) => void }).emit('close');
+    await flush();
+
+    expect(amqp.connect).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not reconnect on close after the module has been destroyed', async () => {
+    const channel = buildChannel();
+    const connection = buildConnection(channel);
+    (amqp.connect as jest.Mock).mockResolvedValue(connection);
+
+    consumer.onModuleInit();
+    await flush();
+    await consumer.onModuleDestroy();
+
+    (connection as unknown as { emit: (event: string) => void }).emit('close');
+    await flush();
+
+    expect(amqp.connect).toHaveBeenCalledTimes(1);
   });
 
   it('retries the connection after a failed connect attempt', async () => {
