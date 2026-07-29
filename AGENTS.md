@@ -46,7 +46,7 @@ de código existente.
 ## Baseline de segurança (não desativar por acidente)
 
 - [ ] `helmet()`, `ValidationPipe` global (`whitelist`/`forbidNonWhitelisted`), validação de `aud` do JWT e CORS restrito por variável de ambiente permanecem ativos; nenhuma dessas proteções foi desabilitada ou contornada para viabilizar uma implementação ou teste.
-- [ ] `app.enableShutdownHooks()` e o listener de `SIGTERM`/`SIGINT` em `main.ts` permanecem ativos; nenhuma alteração no bootstrap remove o encerramento gracioso do servidor HTTP/conexão de banco.
+- [ ] `app.enableShutdownHooks()` em `main.ts` permanece ativo; nenhuma alteração no bootstrap remove o encerramento gracioso do servidor HTTP/conexão de banco (não reintroduzir um listener manual de `SIGTERM`/`SIGINT` em paralelo — ele duplica o hook do Nest e causa double-close).
 - [ ] Swagger/OpenAPI só habilitado fora de `NODE_ENV=production`.
 - [ ] Segredos, chaves, tokens e connection strings nunca são commitados em código, `.env` versionado ou migration — só via variável de ambiente/secret manager.
 - [ ] Dados sensíveis nunca aparecem em `logger.log`/`warn`/`error` em texto claro (incluindo payloads de erro de validação) e não são expostos em `ResponseDto` sem necessidade real.

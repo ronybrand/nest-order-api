@@ -22,16 +22,7 @@ async function bootstrap(): Promise<void> {
   app.enableShutdownHooks();
 
   const port = config.get<number>('PORT') ?? 3000;
-  const server = await app.listen(port);
-
-  ['SIGTERM', 'SIGINT'].forEach((signal) => {
-    process.on(signal, () => {
-      server.close(async () => {
-        await app.close();
-        process.exit(0);
-      });
-    });
-  });
+  await app.listen(port);
 }
 
 bootstrap();
