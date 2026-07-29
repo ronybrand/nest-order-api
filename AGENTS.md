@@ -17,6 +17,7 @@ de código existente.
 - [ ] Classifiquei **cada campo novo** (entidade + `RequestDto`) contra: PII, categoria especial/LGPD, PCI, dado financeiro, credenciais/segredos. Se o campo for sensível, utilize a infraestrutura existente (`@Sensitive()`, `maskSensitive()`), nunca uma solução manual ad hoc. Nenhum campo sensível "para o caso de precisar depois" sem necessidade real da feature.
 - [ ] Apliquei DRY, eliminando duplicações tanto em produção quanto nos testes (reaproveitando helpers de mock de repository e fixtures compartilhadas entre `*.service.spec.ts`).
 - [ ] Avaliei se algum efeito colateral novo (e-mail, notificação, relatório) se beneficia de processamento assíncrono (evento de domínio via `EventEmitter2`, opcionalmente encaminhado a uma fila real) versus uma chamada síncrona mais simples — decisão documentada, não por hábito.
+- [ ] Todo consumer de fila nova distingue mensagem inválida/malformada (vai direto para dead-letter, nunca requeue) de falha transiente (retry com limite e backoff, dead-letter só ao esgotar as tentativas) — nunca `nack(msg, false, true)` incondicional em qualquer falha (ver `RabbitMqConsumer` como referência).
 
 ## TDD (red → green → refactor, não retroativo)
 

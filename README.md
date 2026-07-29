@@ -130,7 +130,10 @@ o boot nem os testes e2e — e dispara o e-mail via `EmailService` (`nodemailer`
 renderizado com Handlebars a partir de
 `src/notification/templates/order-status-changed.hbs`. Em dev/local, `SMTP_HOST` aponta
 para o Mailpit (`docker compose up mailpit`) — nenhum e-mail real sai, inspecionável em
-`http://localhost:8025`.
+`http://localhost:8025`. Mensagem malformada ou sem os campos obrigatórios vai direto para
+`order.status.changed.dlq` (dead-letter queue); falha transiente no envio (ex.: SMTP fora do
+ar) é reprocessada com backoff até `MAX_RETRIES` tentativas antes de também cair na DLQ —
+nenhuma mensagem fica reentregue em loop indefinido.
 
 ### Catálogo de erros
 
