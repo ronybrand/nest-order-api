@@ -36,8 +36,9 @@ Fora de escopo: pagamento, estoque, catálogo de produtos, envio/frete.
 
 - Igualdade de identidade por `taxId` (atenção: campo mutável — não confiar nele como chave
   estável de coleção após updates).
-- `taxId` e `passportNumber` são considerados dados sensíveis (PII) — devem ser mascarados
-  em logs/toString.
+- Campos sensíveis (ex.: `taxId`, `passportNumber`, `email` — a lista cresce conforme o
+  domínio evolui, não se limita a estes) nunca aparecem em texto claro em log; ver seção
+  "Dados sensíveis" abaixo.
 
 #### Order (aggregate root)
 
@@ -158,6 +159,17 @@ para o Mailpit (`docker compose up mailpit`) — nenhum e-mail real sai, inspeci
 **Outros**
 - `AUTHORIZATION_ACCESS_DENIED` — sem permissão para a operação.
 - `INTERNAL_ERROR` — erro inesperado.
+
+### Dados sensíveis
+
+Todo campo classificado como PII/segredo (não só `taxId`/`passportNumber`/`email` — qualquer
+campo novo que se enquadre nessa categoria) é decorado com `@Sensitive()`
+(`src/common/security/sensitive.decorator.ts`) e nunca deve ser logado em texto claro:
+`maskSensitive()` redige o campo inteiro (`***`) para log estruturado de uma entidade/DTO, e
+`maskEmail()` faz um mascaramento parcial (`a***@example.com`) para casos em que o log
+precisa continuar minimamente rastreável (ex.: `EmailService`, ver evento
+`OrderStatusChangedEvent` abaixo). Serialização de resposta HTTP continua protegida à parte
+pelos DTOs de resposta, que só copiam os campos que devem mesmo ir ao cliente.
 
 ## Arquitetura
 
