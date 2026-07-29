@@ -19,6 +19,7 @@ export class RabbitMqPublisher implements OnModuleDestroy {
   private readonly logger = new Logger(RabbitMqPublisher.name);
   private connection?: amqp.ChannelModel;
   private channel?: amqp.Channel;
+  private destroyed = false;
 
   constructor(private readonly configService: ConfigService) {}
 
@@ -38,12 +39,20 @@ export class RabbitMqPublisher implements OnModuleDestroy {
     const url = this.configService.get<EnvConfig['rabbitmq']>('env.rabbitmq')!.url;
     this.connection = await amqp.connect(url);
     this.connection.on('error', (error) => this.logger.error('RabbitMQ connection error', error));
+    this.connection.on('close', () => {
+      this.channel = undefined;
+      this.connection = undefined;
+      if (!this.destroyed) {
+        this.logger.warn('RabbitMQ connection closed, will reconnect on next publish()');
+      }
+    });
     this.channel = await this.connection.createChannel();
     await this.channel.assertQueue(ORDER_STATUS_CHANGED_QUEUE, { durable: true });
     return this.channel;
   }
 
   async onModuleDestroy(): Promise<void> {
+    this.destroyed = true;
     await this.channel?.close();
     await this.connection?.close();
   }
