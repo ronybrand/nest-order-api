@@ -35,6 +35,7 @@ de código existente.
 - [ ] Query nativa (`repository.manager.query`) usa parâmetros posicionais (`$1`), nunca concatenação de string; aplica manualmente `AND deleted_at IS NULL` quando relevante.
 - [ ] Listagens/paginação envolvendo relações usam `eager`/`relations` explícito para evitar N+1.
 - [ ] Nenhum log/`toString` implícito serializa campo `@Sensitive` sem passar por `maskSensitive()`.
+- [ ] Aritmética sobre campo monetário (`decimal`) usa `decimal.js`, nunca `Number()`/operadores nativos — ver `Order#calculateTotal` para as regras de construção e arredondamento explícito em divisão.
 
 ## Service / controller / autorização
 
