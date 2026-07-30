@@ -7,7 +7,7 @@ import { DataSource } from 'typeorm';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { JwtService } from '@nestjs/jwt';
-import * as request from 'supertest';
+import request from 'supertest';
 
 /**
  * Fluxo completo via HTTP contra um Postgres real (Testcontainers): cria
