@@ -1,7 +1,12 @@
 import { ConfigService } from '@nestjs/config';
 import * as amqp from 'amqplib';
-import { RabbitMqConsumer, ORDER_STATUS_CHANGED_DLQ, MAX_RETRIES } from './rabbitmq.consumer';
-import { ORDER_STATUS_CHANGED_QUEUE } from './rabbitmq.publisher';
+import { RabbitMqConsumer } from './rabbitmq.consumer';
+import {
+  MAX_RETRIES,
+  ORDER_STATUS_CHANGED_DLQ,
+  ORDER_STATUS_CHANGED_QUEUE,
+  QUEUE_ARGUMENTS,
+} from './rabbitmq.constants';
 import { EmailService } from './email.service';
 import { OrderStatusChangedEvent } from '../order/order-status-changed.event';
 import { OrderStatus } from '../order/order-status.enum';
@@ -90,10 +95,7 @@ describe('RabbitMqConsumer', () => {
     expect(channel.assertQueue).toHaveBeenCalledWith(ORDER_STATUS_CHANGED_DLQ, { durable: true });
     expect(channel.assertQueue).toHaveBeenCalledWith(ORDER_STATUS_CHANGED_QUEUE, {
       durable: true,
-      arguments: {
-        'x-dead-letter-exchange': '',
-        'x-dead-letter-routing-key': ORDER_STATUS_CHANGED_DLQ,
-      },
+      arguments: QUEUE_ARGUMENTS,
     });
     expect(channel.prefetch).toHaveBeenCalledWith(10);
     expect(channel.consume).toHaveBeenCalledWith(ORDER_STATUS_CHANGED_QUEUE, expect.any(Function));

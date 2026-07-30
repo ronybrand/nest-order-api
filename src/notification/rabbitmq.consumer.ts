@@ -4,13 +4,15 @@ import * as amqp from 'amqplib';
 import { EnvConfig } from '../config/env.config';
 import { OrderStatusChangedEvent } from '../order/order-status-changed.event';
 import { EmailService } from './email.service';
-import { ORDER_STATUS_CHANGED_QUEUE } from './rabbitmq.publisher';
+import {
+  MAX_RETRIES,
+  ORDER_STATUS_CHANGED_DLQ,
+  ORDER_STATUS_CHANGED_QUEUE,
+  QUEUE_ARGUMENTS,
+} from './rabbitmq.constants';
 
 const RECONNECT_DELAY_MS = 5_000;
 const RETRY_BACKOFF_MS = 2_000;
-
-export const ORDER_STATUS_CHANGED_DLQ = 'order.status.changed.dlq';
-export const MAX_RETRIES = 3;
 
 function isOrderStatusChangedEvent(value: unknown): value is OrderStatusChangedEvent {
   if (typeof value !== 'object' || value === null) {
@@ -73,13 +75,7 @@ export class RabbitMqConsumer implements OnModuleInit, OnModuleDestroy {
         });
         this.channel = await this.connection.createChannel();
         await this.channel.assertQueue(ORDER_STATUS_CHANGED_DLQ, { durable: true });
-        await this.channel.assertQueue(ORDER_STATUS_CHANGED_QUEUE, {
-          durable: true,
-          arguments: {
-            'x-dead-letter-exchange': '',
-            'x-dead-letter-routing-key': ORDER_STATUS_CHANGED_DLQ,
-          },
-        });
+        await this.channel.assertQueue(ORDER_STATUS_CHANGED_QUEUE, { durable: true, arguments: QUEUE_ARGUMENTS });
         await this.channel.prefetch(10);
 
         await this.channel.consume(ORDER_STATUS_CHANGED_QUEUE, (message) => {

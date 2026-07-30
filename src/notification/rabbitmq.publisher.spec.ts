@@ -1,6 +1,7 @@
 import { ConfigService } from '@nestjs/config';
 import * as amqp from 'amqplib';
-import { RabbitMqPublisher, ORDER_STATUS_CHANGED_QUEUE } from './rabbitmq.publisher';
+import { RabbitMqPublisher } from './rabbitmq.publisher';
+import { ORDER_STATUS_CHANGED_DLQ, ORDER_STATUS_CHANGED_QUEUE, QUEUE_ARGUMENTS } from './rabbitmq.constants';
 import { OrderStatusChangedEvent } from '../order/order-status-changed.event';
 import { OrderStatus } from '../order/order-status.enum';
 
@@ -58,7 +59,11 @@ describe('RabbitMqPublisher', () => {
     const event = buildEvent();
     await publisher.publish(event);
 
-    expect(channel.assertQueue).toHaveBeenCalledWith(ORDER_STATUS_CHANGED_QUEUE, { durable: true });
+    expect(channel.assertQueue).toHaveBeenCalledWith(ORDER_STATUS_CHANGED_DLQ, { durable: true });
+    expect(channel.assertQueue).toHaveBeenCalledWith(ORDER_STATUS_CHANGED_QUEUE, {
+      durable: true,
+      arguments: QUEUE_ARGUMENTS,
+    });
     expect(channel.sendToQueue).toHaveBeenCalledWith(
       ORDER_STATUS_CHANGED_QUEUE,
       Buffer.from(JSON.stringify(event)),

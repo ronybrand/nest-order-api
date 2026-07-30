@@ -3,8 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import * as amqp from 'amqplib';
 import { EnvConfig } from '../config/env.config';
 import { OrderStatusChangedEvent } from '../order/order-status-changed.event';
-
-export const ORDER_STATUS_CHANGED_QUEUE = 'order.status.changed';
+import { ORDER_STATUS_CHANGED_DLQ, ORDER_STATUS_CHANGED_QUEUE, QUEUE_ARGUMENTS } from './rabbitmq.constants';
 
 /**
  * Publica OrderStatusChangedEvent no RabbitMQ: desacopla o efeito colateral (envio de
@@ -47,7 +46,11 @@ export class RabbitMqPublisher implements OnModuleDestroy {
       }
     });
     this.channel = await this.connection.createChannel();
-    await this.channel.assertQueue(ORDER_STATUS_CHANGED_QUEUE, { durable: true });
+    // Declarado com os mesmos argumentos que RabbitMqConsumer usa - RabbitMQ rejeita com
+    // 406 PRECONDITION_FAILED se um lado declarar sem dead-letter e o outro com, então os
+    // dois lados importam QUEUE_ARGUMENTS em vez de cada um declarar o seu.
+    await this.channel.assertQueue(ORDER_STATUS_CHANGED_DLQ, { durable: true });
+    await this.channel.assertQueue(ORDER_STATUS_CHANGED_QUEUE, { durable: true, arguments: QUEUE_ARGUMENTS });
     return this.channel;
   }
 
