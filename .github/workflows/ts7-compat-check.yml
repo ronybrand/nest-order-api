@@ -1,0 +1,40 @@
+name: Check TypeScript 7 compatibility
+
+on:
+  schedule:
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - name: Check @typescript-eslint peer range against TypeScript 7
+        id: check
+        run: |
+          RANGE=$(npm view @typescript-eslint/eslint-plugin@latest peerDependencies.typescript)
+          echo "Current peer range: $RANGE"
+          if npx --yes semver -r "$RANGE" 7.0.0 >/dev/null 2>&1; then
+            echo "supported=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "supported=false" >> "$GITHUB_OUTPUT"
+          fi
+          echo "range=$RANGE" >> "$GITHUB_OUTPUT"
+
+      - name: Open issue if TS 7 is now supported
+        if: steps.check.outputs.supported == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          EXISTING=$(gh issue list --search "TypeScript 7 support in:title" --state open --json number --jq '.[0].number')
+          if [ -n "$EXISTING" ]; then
+            echo "Issue #$EXISTING already open, skipping."
+            exit 0
+          fi
+          gh issue create \
+            --title "@typescript-eslint now supports TypeScript 7" \
+            --body "Detected peerDependencies.typescript = ${{ steps.check.outputs.range }} on @typescript-eslint/eslint-plugin@latest, which now allows TS 7.
+
+You can remove the \`typescript\` major-version ignore rule in \`.github/dependabot.yml\` and let dependabot bump to TypeScript 7 again."
