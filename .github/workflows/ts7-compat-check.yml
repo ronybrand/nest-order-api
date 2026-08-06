@@ -33,8 +33,13 @@ jobs:
             echo "Issue #$EXISTING already open, skipping."
             exit 0
           fi
+          RANGE="${{ steps.check.outputs.range }}"
+          BODY=$(cat <<EOF
+          Detected peerDependencies.typescript = $RANGE on @typescript-eslint/eslint-plugin@latest, which now allows TS 7.
+
+          You can remove the \`typescript\` major-version ignore rule in \`.github/dependabot.yml\` and let dependabot bump to TypeScript 7 again.
+          EOF
+          )
           gh issue create \
             --title "@typescript-eslint now supports TypeScript 7" \
-            --body "Detected peerDependencies.typescript = ${{ steps.check.outputs.range }} on @typescript-eslint/eslint-plugin@latest, which now allows TS 7.
-
-You can remove the \`typescript\` major-version ignore rule in \`.github/dependabot.yml\` and let dependabot bump to TypeScript 7 again."
+            --body "$BODY"
