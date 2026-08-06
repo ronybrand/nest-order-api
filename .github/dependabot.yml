@@ -9,6 +9,10 @@ updates:
       weekly-batch:
         patterns:
           - "*"
+    ignore:
+      # typescript-eslint doesn't support TS 7 yet (peer dep caps at <6.1.0)
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: github-actions
     directory: /
