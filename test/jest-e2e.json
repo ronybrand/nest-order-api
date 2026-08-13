@@ -5,6 +5,7 @@
   "transform": {
     "^.+\\.(t|j)s$": "ts-jest"
   },
+  "transformIgnorePatterns": ["/node_modules/", "<rootDir>/dist/"],
   "testEnvironment": "node",
   "testTimeout": 120000
 }
