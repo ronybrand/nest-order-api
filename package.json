@@ -73,7 +73,14 @@
     "typescript": "^6.0.3"
   },
   "overrides": {
-    "babel-plugin-istanbul": "^8.0.2"
+    "babel-plugin-istanbul": "^8.0.2",
+    "js-yaml": "^5.2.3",
+    "glob": "^13.0.6",
+    "eslint": {
+      "minimatch": {
+        "brace-expansion": "^5.0.9"
+      }
+    }
   },
   "jest": {
     "moduleFileExtensions": [
