@@ -28,7 +28,7 @@
     "@nestjs/jwt": "^11.0.0",
     "@nestjs/passport": "^11.0.0",
     "@nestjs/platform-express": "^11.2.1",
-    "@nestjs/swagger": "^11.0.0",
+    "@nestjs/swagger": "^11.4.7",
     "@nestjs/typeorm": "^11.0.0",
     "amqplib": "^2.0.1",
     "class-transformer": "^0.5.1",
@@ -45,7 +45,7 @@
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
     "typeorm": "^1.1.0",
-    "uuid": "^14.0.1"
+    "uuid": "^14.0.2"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
@@ -61,7 +61,7 @@
     "@types/supertest": "^7.2.1",
     "@typescript-eslint/eslint-plugin": "^8.67.0",
     "@typescript-eslint/parser": "^8.18.1",
-    "eslint": "^10.8.1",
+    "eslint": "^10.9.0",
     "globals": "^17.9.0",
     "jest": "^30.4.2",
     "prettier": "^3.4.2",
