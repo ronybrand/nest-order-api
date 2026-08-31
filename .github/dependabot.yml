@@ -13,6 +13,14 @@ updates:
       # typescript-eslint doesn't support TS 7 yet (peer dep caps at <6.1.0)
       - dependency-name: "typescript"
         update-types: ["version-update:semver-major"]
+      # NestJS 12 broke the build: nestjs-rate-limiter (unmaintained since
+      # 2022) doesn't type-check against the new RateLimiterModuleAsyncOptions
+      # shape, and even @nestjs/throttler@latest (the official replacement)
+      # still caps its peer dep at @nestjs/common <=11 - the ecosystem hasn't
+      # caught up to v12 yet, not just this one package. Revisit once
+      # @nestjs/throttler ships v12 support.
+      - dependency-name: "@nestjs/*"
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: github-actions
     directory: /

@@ -1,5 +1,8 @@
 # nest-order-api
 
+[![CI](https://github.com/ronybrand/nest-order-api/actions/workflows/ci.yml/badge.svg)](https://github.com/ronybrand/nest-order-api/actions/workflows/ci.yml)
+[![CodeQL](https://github.com/ronybrand/nest-order-api/actions/workflows/codeql.yml/badge.svg)](https://github.com/ronybrand/nest-order-api/actions/workflows/codeql.yml)
+
 Port do domínio de gestão de pedidos (`Customer` → `Order` → `Item`) para **NestJS +
 TypeORM + PostgreSQL**, a partir da implementação de referência em Java/Spring Boot
 (`java-order-api`).
