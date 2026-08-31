@@ -3,120 +3,120 @@
 [![CI](https://github.com/ronybrand/nest-order-api/actions/workflows/ci.yml/badge.svg)](https://github.com/ronybrand/nest-order-api/actions/workflows/ci.yml)
 [![CodeQL](https://github.com/ronybrand/nest-order-api/actions/workflows/codeql.yml/badge.svg)](https://github.com/ronybrand/nest-order-api/actions/workflows/codeql.yml)
 
-Port do domínio de gestão de pedidos (`Customer` → `Order` → `Item`) para **NestJS +
-TypeORM + PostgreSQL**, a partir da implementação de referência em Java/Spring Boot
+Port of the order management domain (`Customer` → `Order` → `Item`) to **NestJS +
+TypeORM + PostgreSQL**, based on the Java/Spring Boot reference implementation
 (`java-order-api`).
 
-## Domínio
+## Domain
 
-Domínio simples de gestão de pedidos com dois agregados:
+Simple order management domain with two aggregates:
 
 ```
 Customer (1) ──< Order (1) ──< Item
 ```
 
-- **Customer**: dados cadastrais do cliente.
-- **Order** (aggregate root): um pedido de um cliente, com uma lista de itens e um total
-  calculado.
-- **Item**: linha de pedido (descrição livre, sem catálogo de produtos).
+- **Customer**: the customer's registration data.
+- **Order** (aggregate root): a customer's order, with a list of items and a computed
+  total.
+- **Item**: an order line (free-text description, no product catalog).
 
-Fora de escopo: pagamento, estoque, catálogo de produtos, envio/frete.
+Out of scope: payment, inventory, product catalog, shipping.
 
-### Entidades
+### Entities
 
 #### Customer
 
-| Campo | Tipo | Regras |
+| Field | Type | Rules |
 |---|---|---|
-| `id` | UUID | gerado |
-| `name` | string | obrigatório |
-| `taxId` | string | obrigatório, **único**, 5–20 chars, padrão `^[A-Za-z0-9./-]{5,20}$` |
-| `passportNumber` | string | opcional, **único** quando presente, padrão ICAO `^[A-Z0-9]{6,9}$` |
-| `email` | string | obrigatório, padrão `^[A-Za-z0-9+_.-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$` |
-| `createdAt`, `updatedAt` | datetime | auditoria |
-| `createdBy`, `updatedBy` | string | auditoria (usuário ou "system") |
-| `deletedAt`, `deletedBy` | datetime / string | soft-delete (nulo = ativo) |
+| `id` | UUID | generated |
+| `name` | string | required |
+| `taxId` | string | required, **unique**, 5–20 chars, pattern `^[A-Za-z0-9./-]{5,20}$` |
+| `passportNumber` | string | optional, **unique** when present, ICAO pattern `^[A-Z0-9]{6,9}$` |
+| `email` | string | required, pattern `^[A-Za-z0-9+_.-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$` |
+| `createdAt`, `updatedAt` | datetime | audit |
+| `createdBy`, `updatedBy` | string | audit (user or "system") |
+| `deletedAt`, `deletedBy` | datetime / string | soft-delete (null = active) |
 
-- Igualdade de identidade por `taxId` (atenção: campo mutável — não confiar nele como chave
-  estável de coleção após updates).
-- Campos sensíveis (ex.: `taxId`, `passportNumber`, `email` — a lista cresce conforme o
-  domínio evolui, não se limita a estes) nunca aparecem em texto claro em log; ver seção
-  "Dados sensíveis" abaixo.
+- Identity equality by `taxId` (careful: mutable field — don't rely on it as a stable
+  collection key after updates).
+- Sensitive fields (e.g. `taxId`, `passportNumber`, `email` — the list grows as the
+  domain evolves, not limited to these) never appear in plaintext in logs; see the
+  "Sensitive data" section below.
 
 #### Order (aggregate root)
 
-| Campo | Tipo | Regras |
+| Field | Type | Rules |
 |---|---|---|
-| `id` | UUID | gerado |
-| `customer` | referência a Customer | obrigatório |
-| `items` | lista de Item | composição — ciclo de vida atrelado ao Order |
-| `total` | decimal | **derivado**, recalculado a cada mutação de itens |
-| `status` | enum `OrderStatus` | default `OPEN` |
-| `version` | inteiro/long | controle de concorrência otimista |
-| `createdAt`, `updatedAt`, `createdBy`, `updatedBy` | — | auditoria |
+| `id` | UUID | generated |
+| `customer` | reference to Customer | required |
+| `items` | list of Item | composition — lifecycle tied to the Order |
+| `total` | decimal | **derived**, recalculated on every item mutation |
+| `status` | `OrderStatus` enum | default `OPEN` |
+| `version` | int/long | optimistic concurrency control |
+| `createdAt`, `updatedAt`, `createdBy`, `updatedBy` | — | audit |
 | `deletedAt`, `deletedBy` | — | soft-delete |
 
-- Igualdade de identidade por `id`.
-- **Concorrência otimista**: toda escrita que altera `status` ou `items` deve
-  verificar/incrementar `version`; conflito concorrente é reportado como erro de conflito
+- Identity equality by `id`.
+- **Optimistic concurrency**: every write that changes `status` or `items` must
+  check/increment `version`; a concurrent conflict is reported as a conflict error
   (409).
 
-#### Item (filho de Order)
+#### Item (child of Order)
 
-| Campo | Tipo | Regras |
+| Field | Type | Rules |
 |---|---|---|
-| `id` | UUID | gerado |
-| `order` | referência ao Order pai | obrigatório |
-| `description` | string | obrigatório, não-branco, máx. 255 chars |
-| `unitPrice` | decimal | obrigatório, positivo, máx. 2 casas decimais |
-| `quantity` | inteiro | obrigatório, positivo |
+| `id` | UUID | generated |
+| `order` | reference to the parent Order | required |
+| `description` | string | required, non-blank, max. 255 chars |
+| `unitPrice` | decimal | required, positive, max. 2 decimal places |
+| `quantity` | integer | required, positive |
 
-- Igualdade de identidade por `id` (não pela descrição — descrições podem se repetir num
-  mesmo pedido).
-- Subtotal do item = `unitPrice * quantity` (calculado, não persistido).
+- Identity equality by `id` (not by description — descriptions can repeat within
+  the same order).
+- Item subtotal = `unitPrice * quantity` (computed, not persisted).
 
-### Enum OrderStatus
+### OrderStatus enum
 
 ```
 OPEN → CONFIRMED → CANCELED
 OPEN → CANCELED
 ```
 
-- `OPEN`: estado inicial. Itens podem ser adicionados/alterados/removidos. Pode
-  transicionar para `CONFIRMED` ou `CANCELED`.
-- `CONFIRMED`: itens congelados (não editáveis). Pode transicionar apenas para `CANCELED`.
-- `CANCELED`: estado terminal. Nenhuma transição posterior permitida.
+- `OPEN`: initial state. Items can be added/changed/removed. Can transition to
+  `CONFIRMED` or `CANCELED`.
+- `CONFIRMED`: items frozen (not editable). Can only transition to `CANCELED`.
+- `CANCELED`: terminal state. No further transitions allowed.
 
-### Regras de negócio / invariantes
+### Business rules / invariants
 
-1. **Cálculo do total**: `order.total = Σ (item.unitPrice × item.quantity)` sobre todos os
-   itens atuais. Recalculado após qualquer criação/atualização/remoção de item.
-2. **Edição de itens somente com order `OPEN`**: adicionar, alterar quantidade ou remover
-   item em order `CONFIRMED`/`CANCELED` é erro de validação.
-3. **Confirmar order** (`OPEN → CONFIRMED`): falha se status atual não for `OPEN`, ou se o
-   order não tiver nenhum item.
-4. **Cancelar order** (`OPEN|CONFIRMED → CANCELED`): falha se status atual já for
-   `CANCELED`.
-5. **Criar order**: exige um `customerId` existente; monta os itens da requisição; calcula
-   o total inicial.
-6. **Limite de itens**: máximo de 200 itens por order na criação.
-7. **Unicidade de Customer**: `taxId` único; `passportNumber` único quando informado
-   (branco/ausente não conta na checagem).
-8. **Exclusão de Customer bloqueada**: não é permitido excluir um customer que possua
-   qualquer order não excluído (soft-deleted não conta).
-9. **Delete é sempre soft-delete**: em ambos os agregados — nunca remoção física; registros
-   com `deletedAt` preenchido são excluídos de toda consulta padrão.
-10. **Concorrência otimista em Order**: mutações concorrentes conflitantes falham com erro
-    de conflito, não sobrescrevem silenciosamente.
+1. **Total calculation**: `order.total = Σ (item.unitPrice × item.quantity)` over all
+   current items. Recalculated after any item creation/update/removal.
+2. **Items editable only while order is `OPEN`**: adding, changing quantity, or
+   removing an item on a `CONFIRMED`/`CANCELED` order is a validation error.
+3. **Confirm order** (`OPEN → CONFIRMED`): fails if the current status isn't `OPEN`,
+   or if the order has no items.
+4. **Cancel order** (`OPEN|CONFIRMED → CANCELED`): fails if the current status is
+   already `CANCELED`.
+5. **Create order**: requires an existing `customerId`; builds the items from the
+   request; computes the initial total.
+6. **Item limit**: max. 200 items per order on creation.
+7. **Customer uniqueness**: `taxId` unique; `passportNumber` unique when provided
+   (blank/absent doesn't count toward the check).
+8. **Customer deletion blocked**: you can't delete a customer that has any
+   non-deleted order (soft-deleted doesn't count).
+9. **Delete is always soft-delete**: for both aggregates — never a physical
+   removal; records with `deletedAt` set are excluded from every default query.
+10. **Optimistic concurrency on Order**: conflicting concurrent mutations fail with
+    a conflict error, they don't silently overwrite each other.
 
-### Eventos de domínio
+### Domain events
 
 #### OrderStatusChangedEvent
 
-Disparado ao final de `confirm()` e `cancel()` (somente se o customer tiver e-mail
-não-vazio).
+Fired at the end of `confirm()` and `cancel()` (only if the customer has a
+non-empty email).
 
-| Campo | Tipo |
+| Field | Type |
 |---|---|
 | `orderId` | UUID |
 | `customerEmail` | string |
@@ -126,122 +126,123 @@ não-vazio).
 | `totalAmount` | decimal |
 | `changedAt` | datetime |
 
-O `OrderStatusListener` (`EventEmitter2`, in-process) publica o evento na fila RabbitMQ
-`order.status.changed` (`RabbitMqPublisher`); o `RabbitMqConsumer` a consome — embutido no
-mesmo processo da API, reconectando com retry em background se o broker cair, sem derrubar
-o boot nem os testes e2e — e dispara o e-mail via `EmailService` (`nodemailer`/SMTP),
-renderizado com Handlebars a partir de
-`src/notification/templates/order-status-changed.hbs`. Em dev/local, `SMTP_HOST` aponta
-para o Mailpit (`docker compose up mailpit`) — nenhum e-mail real sai, inspecionável em
-`http://localhost:8025`. Mensagem malformada ou sem os campos obrigatórios vai direto para
-`order.status.changed.dlq` (dead-letter queue); falha transiente no envio (ex.: SMTP fora do
-ar) é reprocessada com backoff até `MAX_RETRIES` tentativas antes de também cair na DLQ —
-nenhuma mensagem fica reentregue em loop indefinido.
+`OrderStatusListener` (`EventEmitter2`, in-process) publishes the event to the RabbitMQ
+queue `order.status.changed` (`RabbitMqPublisher`); `RabbitMqConsumer` consumes it —
+embedded in the same API process, reconnecting with background retry if the broker
+goes down, without crashing boot or the e2e tests — and sends the email via
+`EmailService` (`nodemailer`/SMTP), rendered with Handlebars from
+`src/notification/templates/order-status-changed.hbs`. In dev/local, `SMTP_HOST` points
+to Mailpit (`docker compose up mailpit`) — no real email goes out, inspectable at
+`http://localhost:8025`. A malformed message or one missing required fields goes
+straight to `order.status.changed.dlq` (dead-letter queue); a transient send failure
+(e.g. SMTP down) is retried with backoff up to `MAX_RETRIES` attempts before also
+landing in the DLQ — no message is ever redelivered in an infinite loop.
 
-### Catálogo de erros
+### Error catalog
 
-**Validação (400)**
-- `VALIDATION_MISSING_FIELD` — campo obrigatório ausente.
-- `VALIDATION_INVALID_CUSTOMER_ID` — customerId inexistente ao criar order.
-- `VALIDATION_ORDER_NOT_EDITABLE` — tentativa de editar itens de order não-`OPEN`.
-- `VALIDATION_ORDER_EMPTY` — tentativa de confirmar order sem itens.
-- `VALIDATION_ORDER_INVALID_STATUS_TRANSITION` — transição de status não permitida.
-- `VALIDATION_INVALID_FILTER_VALUE` / `VALIDATION_INVALID_SORT_FIELD` — parâmetros de busca
-  inválidos.
-- `VALIDATION_CONSTRAINT_VIOLATION` — violação genérica de validação de campo.
+**Validation (400)**
+- `VALIDATION_MISSING_FIELD` — required field missing.
+- `VALIDATION_INVALID_CUSTOMER_ID` — nonexistent customerId when creating an order.
+- `VALIDATION_ORDER_NOT_EDITABLE` — attempt to edit items of a non-`OPEN` order.
+- `VALIDATION_ORDER_EMPTY` — attempt to confirm an order with no items.
+- `VALIDATION_ORDER_INVALID_STATUS_TRANSITION` — disallowed status transition.
+- `VALIDATION_INVALID_FILTER_VALUE` / `VALIDATION_INVALID_SORT_FIELD` — invalid search
+  parameters.
+- `VALIDATION_CONSTRAINT_VIOLATION` — generic field validation violation.
 
-**Não encontrado (404)**
+**Not found (404)**
 - `RESOURCE_NOT_FOUND_CUSTOMER`
 - `RESOURCE_NOT_FOUND_ORDER`
 - `RESOURCE_NOT_FOUND_ITEM`
 
-**Conflito (409)**
-- `VALIDATION_CUSTOMER_TAXID_EXISTS` — taxId duplicado.
-- `VALIDATION_CUSTOMER_PASSPORT_EXISTS` — passportNumber duplicado.
-- `VALIDATION_CUSTOMER_HAS_ORDERS` — exclusão de customer com orders associados.
-- `CONFLICT_CONCURRENT_MODIFICATION` — conflito de concorrência otimista.
-- `CONFLICT_DATA_INTEGRITY_VIOLATION` — violação de integridade no armazenamento.
+**Conflict (409)**
+- `VALIDATION_CUSTOMER_TAXID_EXISTS` — duplicate taxId.
+- `VALIDATION_CUSTOMER_PASSPORT_EXISTS` — duplicate passportNumber.
+- `VALIDATION_CUSTOMER_HAS_ORDERS` — deleting a customer with associated orders.
+- `CONFLICT_CONCURRENT_MODIFICATION` — optimistic concurrency conflict.
+- `CONFLICT_DATA_INTEGRITY_VIOLATION` — storage integrity violation.
 
-**Outros**
-- `AUTHORIZATION_ACCESS_DENIED` — sem permissão para a operação.
-- `INTERNAL_ERROR` — erro inesperado.
+**Other**
+- `AUTHORIZATION_ACCESS_DENIED` — not authorized for the operation.
+- `INTERNAL_ERROR` — unexpected error.
 
-### Dados sensíveis
+### Sensitive data
 
-Todo campo classificado como PII/segredo (não só `taxId`/`passportNumber`/`email` — qualquer
-campo novo que se enquadre nessa categoria) é decorado com `@Sensitive()`
-(`src/common/security/sensitive.decorator.ts`) e nunca deve ser logado em texto claro:
-`maskSensitive()` redige o campo inteiro (`***`) para log estruturado de uma entidade/DTO, e
-`maskEmail()` faz um mascaramento parcial (`a***@example.com`) para casos em que o log
-precisa continuar minimamente rastreável (ex.: `EmailService`, ver evento
-`OrderStatusChangedEvent` abaixo). Serialização de resposta HTTP continua protegida à parte
-pelos DTOs de resposta, que só copiam os campos que devem mesmo ir ao cliente.
+Every field classified as PII/secret (not just `taxId`/`passportNumber`/`email` — any
+new field that fits this category) is decorated with `@Sensitive()`
+(`src/common/security/sensitive.decorator.ts`) and must never be logged in plaintext:
+`maskSensitive()` redacts the whole field (`***`) for structured logging of an
+entity/DTO, and `maskEmail()` does partial masking (`a***@example.com`) for cases
+where the log still needs to be minimally traceable (e.g. `EmailService`, see the
+`OrderStatusChangedEvent` event above). HTTP response serialization stays separately
+protected by the response DTOs, which only copy the fields meant to actually reach
+the client.
 
-## Arquitetura
+## Architecture
 
-Package-by-feature: cada domínio vive em `src/<dominio>/` com entidade, DTOs, service,
-controller e module próprios. Infraestrutura compartilhada (busca/filtro genérico,
-exceções, auditoria/soft-delete, autenticação/papéis, mascaramento de dado sensível) vive em
+Package-by-feature: each domain lives in `src/<domain>/` with its own entity, DTOs,
+service, controller and module. Shared infrastructure (generic search/filtering,
+exceptions, audit/soft-delete, authentication/roles, sensitive-data masking) lives in
 `src/common/`.
 
-Convenções completas de desenvolvimento (o "como" de cada camada) estão na skill
-[`nestjs-feature`](.claude/skills/nestjs-feature/SKILL.md); `AGENTS.md` traz o checklist
-resumido a validar antes de qualquer alteração. A skill fica versionada num repositório
-privado à parte — não está incluída neste repositório público.
+Full development conventions (the "how" of each layer) live in the
+[`nestjs-feature`](.claude/skills/nestjs-feature/SKILL.md) skill; `AGENTS.md` carries
+the summarized checklist to validate before any change. The skill is versioned in a
+separate private repository — it isn't included in this public repo.
 
-## Executando localmente
+## Running locally
 
 ```bash
 cp .env.example .env
-docker compose up -d          # sobe PostgreSQL, RabbitMQ e Mailpit locais
+docker compose up -d          # starts local PostgreSQL, RabbitMQ and Mailpit
 npm install
-npm run migration:run         # aplica o schema (customers/orders/items)
+npm run migration:run         # applies the schema (customers/orders/items)
 npm run start:dev
 ```
 
 - RabbitMQ Management UI (guest/guest): `http://localhost:15672`
-- Mailpit Web UI (inspecionar e-mails recebidos): `http://localhost:8025`
+- Mailpit Web UI (inspect received emails): `http://localhost:8025`
 
-A API sobe em `http://localhost:3000`. Autenticação é via JWT (RS256) validado contra
-`JWT_PUBLIC_KEY_PATH`/`JWT_AUDIENCE` — aponte para o provedor OIDC do seu ambiente (ex.
-Keycloak) antes de chamar qualquer endpoint protegido.
+The API comes up at `http://localhost:3000`. Authentication is via JWT (RS256)
+validated against `JWT_PUBLIC_KEY_PATH`/`JWT_AUDIENCE` — point it at your
+environment's OIDC provider (e.g. Keycloak) before calling any protected endpoint.
 
-## Testes e qualidade
+## Tests and quality
 
 ```bash
-npm run test        # unitários (*.service.spec.ts) — sem Docker
-npm run test:e2e     # ponta a ponta — requer Docker (Testcontainers)
-npm run verify       # gate local único: lint (sem warning) → build → cobertura → e2e
+npm run test        # unit tests (*.service.spec.ts) — no Docker
+npm run test:e2e     # end-to-end — requires Docker (Testcontainers)
+npm run verify       # single local gate: lint (no warnings) → build → coverage → e2e
 ```
 
-`npm run verify` reproduz o `ci.yml` num único comando local. Cobertura mínima configurada
-em `coverageThreshold` (`package.json`): branches 85% / functions 90% / lines 90% /
-statements 90%.
+`npm run verify` reproduces `ci.yml` in a single local command. Minimum coverage is
+configured in `coverageThreshold` (`package.json`): branches 85% / functions 90% /
+lines 90% / statements 90%.
 
 ## Endpoints
 
-### `/orders` (requer usuário autenticado)
+### `/orders` (requires an authenticated user)
 
-| Método | Path | Descrição |
+| Method | Path | Description |
 |---|---|---|
-| POST | `/orders` | Criar order |
-| GET | `/orders/search` | Buscar orders (query params) |
-| POST | `/orders/search` | Buscar orders (body) |
-| GET | `/orders/{id}` | Obter order por id |
-| DELETE | `/orders/{id}` | Excluir (soft) order |
-| POST | `/orders/{id}/items` | Adicionar item |
-| PATCH | `/orders/{orderId}/items/{itemId}` | Atualizar quantidade do item |
-| DELETE | `/orders/{orderId}/items/{itemId}` | Remover item |
-| POST | `/orders/{id}/confirm` | Confirmar order |
-| POST | `/orders/{id}/cancel` | Cancelar order |
+| POST | `/orders` | Create order |
+| GET | `/orders/search` | Search orders (query params) |
+| POST | `/orders/search` | Search orders (body) |
+| GET | `/orders/{id}` | Get order by id |
+| DELETE | `/orders/{id}` | Delete (soft) order |
+| POST | `/orders/{id}/items` | Add item |
+| PATCH | `/orders/{orderId}/items/{itemId}` | Update item quantity |
+| DELETE | `/orders/{orderId}/items/{itemId}` | Remove item |
+| POST | `/orders/{id}/confirm` | Confirm order |
+| POST | `/orders/{id}/cancel` | Cancel order |
 
-### `/customers` (mutações requerem `ROLE_ADMIN`; leituras requerem usuário autenticado)
+### `/customers` (mutations require `ROLE_ADMIN`; reads require an authenticated user)
 
-| Método | Path | Descrição |
+| Method | Path | Description |
 |---|---|---|
-| POST | `/customers` | Criar customer (admin) |
-| GET | `/customers/search` | Buscar customers (query params) |
-| POST | `/customers/search` | Buscar customers (body) |
-| GET | `/customers/{id}` | Obter customer por id |
-| PUT | `/customers/{id}` | Atualizar customer (admin) |
-| DELETE | `/customers/{id}` | Excluir (soft) customer (admin) |
+| POST | `/customers` | Create customer (admin) |
+| GET | `/customers/search` | Search customers (query params) |
+| POST | `/customers/search` | Search customers (body) |
+| GET | `/customers/{id}` | Get customer by id |
+| PUT | `/customers/{id}` | Update customer (admin) |
+| DELETE | `/customers/{id}` | Delete (soft) customer (admin) |
