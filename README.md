@@ -5,7 +5,36 @@
 
 Port of the order management domain (`Customer` → `Order` → `Item`) to **NestJS +
 TypeORM + PostgreSQL**, based on the Java/Spring Boot reference implementation
-(`java-order-api`).
+(`spring-order-api`).
+
+## Request &amp; notification flow
+
+**Order create/update (synchronous)**
+
+```mermaid
+flowchart LR
+    Client -->|HTTPS| RateLimit[RateLimiterGuard] --> JWT[JwtAuthGuard] --> Roles[RolesGuard] --> Controller[OrderController] --> OrderService --> Repository[OrderRepository <br>TypeORM] --> DB[(PostgreSQL)]
+```
+
+`OrderService.changeStatus()` publishes an `ORDER_STATUS_CHANGED_EVENT` ⤵
+
+**Notification (asynchronous)**
+
+```mermaid
+flowchart LR
+    Event[ORDER_STATUS_CHANGED_EVENT] --> Listener[OrderStatusListener] -->|publish| Queue[[RabbitMQ order.status.changed]] -->|consume| Consumer[RabbitMqConsumer] --> Email[EmailService] --> Customer([Customer inbox])
+    Consumer -.->|retry / DLQ| Queue
+```
+
+`RateLimiterGuard` runs globally for every request; `JwtAuthGuard` and `RolesGuard` are
+applied per-controller on `OrderController`, in that order, so `request.user` exists before
+roles are checked. Creating or updating an order then runs synchronously through
+`OrderService` and the TypeORM `OrderRepository`, returning `201` for create and `200` for
+the update-style endpoints (`204` for delete). A status change from `confirm()` or `cancel()`
+(not every update, and only if the customer has an email) also emits an in-process
+`EventEmitter2` event; `OrderStatusListener` re-publishes it onto a RabbitMQ queue, drained by
+a separate `RabbitMqConsumer` (own retry with an `x-retry-count` header, then DLQ) that sends
+the email. The two paths never block each other.
 
 ## Domain
 
