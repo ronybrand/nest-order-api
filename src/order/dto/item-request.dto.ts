@@ -1,5 +1,6 @@
-import { IsInt, IsNotEmpty, IsNumber, IsPositive, IsString, Max, MaxLength } from 'class-validator';
+import { IsNotEmpty, IsNumber, IsPositive, IsString, Max, MaxLength } from 'class-validator';
 import { OrderConstants } from '../order.constants';
+import { IsValidQuantity } from './quantity.decorator';
 
 export class ItemRequestDto {
   @IsNotEmpty()
@@ -12,8 +13,6 @@ export class ItemRequestDto {
   @Max(OrderConstants.MAX_UNIT_PRICE)
   unitPrice!: number;
 
-  @IsInt()
-  @IsPositive()
-  @Max(OrderConstants.MAX_QUANTITY)
+  @IsValidQuantity()
   quantity!: number;
 }
