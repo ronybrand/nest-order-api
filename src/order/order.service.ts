@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import { IsNull, Repository } from 'typeorm';
+import { Repository } from 'typeorm';
 import { StringUtils } from '../common/util/string-utils';
 import { Order } from './order.entity';
 import { Item } from './item.entity';
@@ -16,33 +16,37 @@ import { InvalidInputException, ResourceNotFoundException } from '../common/exce
 import { FilterCriterion } from '../common/filter/search-request.dto';
 import { Operator } from '../common/filter/operator.enum';
 import { Page, SearchService } from '../common/filter/search.service';
+import { PaginationConfig } from '../common/config/pagination.config';
 import { currentUsername, isCurrentUserAdmin, isSystemContext } from '../common/audit/current-user';
 import { ORDER_STATUS_CHANGED_EVENT, OrderStatusChangedEvent } from './order-status-changed.event';
 import { OrderConstants } from './order.constants';
+import { AbstractCrudService } from '../common/crud/abstract-crud.service';
 
 @Injectable()
-export class OrderService {
+export class OrderService extends AbstractCrudService<Order> {
   private readonly logger = new Logger(OrderService.name);
 
   constructor(
-    @InjectRepository(Order) private readonly orderRepository: Repository<Order>,
+    @InjectRepository(Order) orderRepository: Repository<Order>,
     @InjectRepository(Item) private readonly itemRepository: Repository<Item>,
     private readonly customerService: CustomerService,
     private readonly searchService: SearchService,
     private readonly eventEmitter: EventEmitter2,
-  ) {}
+  ) {
+    super(orderRepository, 'Order', ErrorCode.RESOURCE_NOT_FOUND_ORDER);
+  }
 
   async create(dto: OrderCreateRequestDto): Promise<OrderResponseDto> {
     const customer = await this.customerService.findEntityByIdOrThrow(dto.customerId);
 
-    const order = this.orderRepository.create({
+    const order = this.repository.create({
       customer,
       status: OrderStatus.OPEN,
       items: dto.items.map((item) => this.toItemEntity(item)),
     });
     order.calculateTotal();
 
-    const saved = await this.orderRepository.save(order);
+    const saved = await this.repository.save(order);
     this.logger.log(`Order created: id=${saved.id}, customerId=${customer.id}`);
     return OrderResponseDto.from(saved);
   }
@@ -53,7 +57,7 @@ export class OrderService {
 
   async delete(id: string): Promise<void> {
     await this.findEntityByIdOrThrow(id);
-    await this.orderRepository.update(id, { deletedAt: new Date(), deletedBy: currentUsername() });
+    await this.softDelete(id);
     this.logger.log(`Order deleted: id=${id}`);
   }
 
@@ -72,7 +76,7 @@ export class OrderService {
     order.items.push(this.toItemEntity(dto));
     order.calculateTotal();
 
-    const saved = await this.orderRepository.save(order);
+    const saved = await this.repository.save(order);
     this.logger.log(`Item added to order: orderId=${orderId}`);
     return OrderResponseDto.from(saved);
   }
@@ -89,7 +93,7 @@ export class OrderService {
     item.quantity = dto.quantity;
     order.calculateTotal();
 
-    const saved = await this.orderRepository.save(order);
+    const saved = await this.repository.save(order);
     this.logger.log(`Item quantity updated: orderId=${orderId}, itemId=${itemId}`);
     return OrderResponseDto.from(saved);
   }
@@ -102,7 +106,7 @@ export class OrderService {
     order.items = order.items.filter((item) => item.id !== itemId);
     order.calculateTotal();
 
-    const saved = await this.orderRepository.save(order);
+    const saved = await this.repository.save(order);
     this.logger.log(`Item removed from order: orderId=${orderId}, itemId=${itemId}`);
     return OrderResponseDto.from(saved);
   }
@@ -130,11 +134,11 @@ export class OrderService {
     criteria: FilterCriterion[],
     sort?: string,
     order: 'asc' | 'desc' = 'asc',
-    page = 0,
-    size = 20,
+    page = PaginationConfig.defaultPage,
+    size = PaginationConfig.defaultSize,
   ): Promise<Page<Order>> {
     const effectiveCriteria = this.scopeCriteriaToOwnerIfNeeded(criteria);
-    return this.searchService.search(this.orderRepository, 'order', effectiveCriteria, sort, order, page, size);
+    return this.searchService.search(this.repository, 'order', effectiveCriteria, sort, order, page, size);
   }
 
   /**
@@ -149,16 +153,8 @@ export class OrderService {
     return [...criteria, { field: 'createdBy', operator: Operator.EQ, value: currentUsername() }];
   }
 
-  private async findEntityByIdOrThrow(id: string): Promise<Order> {
-    const order = await this.orderRepository.findOneBy({ id, deletedAt: IsNull() });
-    if (!order || !this.canAccessOrder(order)) {
-      throw new ResourceNotFoundException(ErrorCode.RESOURCE_NOT_FOUND_ORDER, `Order ${id} not found`, { id });
-    }
-    return order;
-  }
-
   /** Posse inválida é tratada como 404, não 403 (não revela existência do recurso). */
-  private canAccessOrder(order: Order): boolean {
+  protected canAccess(order: Order): boolean {
     return isSystemContext() || isCurrentUserAdmin() || order.createdBy === currentUsername();
   }
 
@@ -195,7 +191,7 @@ export class OrderService {
   private async changeStatus(order: Order, newStatus: OrderStatus): Promise<OrderResponseDto> {
     const oldStatus = order.status;
     order.status = newStatus;
-    const saved = await this.orderRepository.save(order);
+    const saved = await this.repository.save(order);
     this.logger.log(`Order status changed: id=${saved.id}, from=${oldStatus}, to=${newStatus}`);
 
     if (StringUtils.isNotBlank(saved.customer.email)) {
