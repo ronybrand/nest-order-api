@@ -35,6 +35,11 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       return;
     }
 
+    if (this.isPayloadTooLarge(exception)) {
+      this.send(response, HttpStatus.PAYLOAD_TOO_LARGE, ErrorCode.VALIDATION_PAYLOAD_TOO_LARGE, 'Request body too large');
+      return;
+    }
+
     if (exception instanceof HttpException) {
       const status = exception.getStatus();
       const body = exception.getResponse();
@@ -48,6 +53,14 @@ export class GlobalExceptionFilter implements ExceptionFilter {
 
     this.logger.error(`Unhandled error on ${request.method} ${request.url}`, exception as Error);
     this.send(response, HttpStatus.INTERNAL_SERVER_ERROR, ErrorCode.INTERNAL_ERROR, 'Internal server error');
+  }
+
+  private isPayloadTooLarge(exception: unknown): boolean {
+    // body-parser (via raw-body/http-errors) lanca um erro simples, nao um
+    // HttpException do Nest - type é o identificador estavel da lib, status
+    // pode variar entre versoes/forks então checamos os dois defensivamente.
+    const err = exception as { type?: string; status?: number; statusCode?: number };
+    return err?.type === 'entity.too.large' || err?.status === 413 || err?.statusCode === 413;
   }
 
   private isUniqueViolation(error: QueryFailedError): boolean {

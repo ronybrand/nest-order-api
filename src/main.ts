@@ -1,20 +1,15 @@
 import 'reflect-metadata';
 import { NestFactory } from '@nestjs/core';
-import { ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import helmet from 'helmet';
+import { NestExpressApplication } from '@nestjs/platform-express';
 import { AppModule } from './app.module';
-import { GlobalExceptionFilter } from './common/exceptions/global-exception.filter';
-import { EnvConfig } from './config/env.config';
+import { configureApp } from './bootstrap/configure-app';
 
 async function bootstrap(): Promise<void> {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
   const config = app.get(ConfigService);
 
-  app.use(helmet());
-  app.enableCors({ origin: config.get<EnvConfig['cors']>('env.cors')!.allowedOrigins });
-  app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }));
-  app.useGlobalFilters(new GlobalExceptionFilter());
+  configureApp(app);
   app.enableShutdownHooks();
 
   const port = config.get<number>('PORT') ?? 3000;
