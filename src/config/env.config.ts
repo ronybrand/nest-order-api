@@ -1,4 +1,4 @@
-import { registerAs } from '@nestjs/config';
+import { ConfigService, registerAs } from '@nestjs/config';
 
 export interface EnvConfig {
   cors: {
@@ -25,21 +25,31 @@ export interface EnvConfig {
   };
 }
 
-/** Factory único registrado via ConfigModule.forRoot({ load: [envConfig] }) para centralizar leitura de env vars. */
-function parseCorsAllowedOrigins(): string[] {
-  const origins = (process.env.CORS_ALLOWED_ORIGINS ?? '')
+/**
+ * Parser comum para env vars de lista (CSV): "a, b ,c" -> ['a', 'b', 'c'],
+ * ignorando entradas vazias. Com `required: true`, lista vazia é tratada
+ * como configuração ausente e quebra o boot (fail-fast) em vez de deixar o
+ * comportamento resultante (ex. bloquear toda origem CORS) implícito.
+ */
+function parseCsvEnv(envVarName: string, options: { required: boolean }): string[] {
+  const values = (process.env[envVarName] ?? '')
     .split(',')
-    .map((origin) => origin.trim())
+    .map((value) => value.trim())
     .filter(Boolean);
 
+  if (options.required && values.length === 0) {
+    throw new Error(`${envVarName} must be set to at least one non-empty value`);
+  }
+
+  return values;
+}
+
+/** Factory único registrado via ConfigModule.forRoot({ load: [envConfig] }) para centralizar leitura de env vars. */
+function parseCorsAllowedOrigins(): string[] {
   // Fail-fast: uma CORS_ALLOWED_ORIGINS vazia significaria silenciosamente
   // bloquear toda origem (ou, pior, um enableCors mal configurado liberando
   // tudo) - preferimos que o boot quebre de forma obvia a esse silencio.
-  if (origins.length === 0) {
-    throw new Error('CORS_ALLOWED_ORIGINS must be set to at least one non-empty origin');
-  }
-
-  return origins;
+  return parseCsvEnv('CORS_ALLOWED_ORIGINS', { required: true });
 }
 
 /**
@@ -51,10 +61,7 @@ function parseCorsAllowedOrigins(): string[] {
  * por um cliente direto.
  */
 function parseTrustedProxies(): string[] {
-  return (process.env.TRUSTED_PROXIES ?? '')
-    .split(',')
-    .map((proxy) => proxy.trim())
-    .filter(Boolean);
+  return parseCsvEnv('TRUSTED_PROXIES', { required: false });
 }
 
 export const envConfig = registerAs(
@@ -85,3 +92,13 @@ export const envConfig = registerAs(
     },
   }),
 );
+
+/**
+ * Le uma secao do namespace 'env' sem repetir a chave como tipo E como
+ * string literal (`config.get<EnvConfig['x']>('env.x')!`) em cada
+ * callsite. O `!` e seguro aqui: `envConfig` sempre popula o namespace
+ * completo, entao nenhuma secao fica ausente em runtime.
+ */
+export function getEnv<K extends keyof EnvConfig>(config: ConfigService, key: K): EnvConfig[K] {
+  return config.get<EnvConfig[K]>(`env.${key}`)!;
+}

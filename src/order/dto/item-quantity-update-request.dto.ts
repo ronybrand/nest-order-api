@@ -1,9 +1,6 @@
-import { IsInt, IsPositive, Max } from 'class-validator';
-import { OrderConstants } from '../order.constants';
+import { IsValidQuantity } from './quantity.decorator';
 
 export class ItemQuantityUpdateRequestDto {
-  @IsInt()
-  @IsPositive()
-  @Max(OrderConstants.MAX_QUANTITY)
+  @IsValidQuantity()
   quantity!: number;
 }

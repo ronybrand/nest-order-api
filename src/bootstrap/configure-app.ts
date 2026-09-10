@@ -4,7 +4,7 @@ import { ConfigService } from '@nestjs/config';
 import { NextFunction, Request, Response } from 'express';
 import helmet from 'helmet';
 import { GlobalExceptionFilter } from '../common/exceptions/global-exception.filter';
-import { EnvConfig } from '../config/env.config';
+import { getEnv } from '../config/env.config';
 
 /** 1MB - limite conservador o suficiente para o payload deste dominio (Customer/Order/Item). */
 export const MAX_REQUEST_BODY_SIZE = '1mb';
@@ -18,8 +18,8 @@ const PERMISSIONS_POLICY = 'camera=(), microphone=(), geolocation=()';
  */
 export function configureApp(app: NestExpressApplication): void {
   const config = app.get(ConfigService);
-  const cors = config.get<EnvConfig['cors']>('env.cors')!;
-  const trustedProxies = config.get<EnvConfig['trustedProxies']>('env.trustedProxies')!;
+  const cors = getEnv(config, 'cors');
+  const trustedProxies = getEnv(config, 'trustedProxies');
 
   // Sem proxies confiáveis configurados, mantém o padrão seguro do Express
   // (`false`): X-Forwarded-For é ignorado e req.ip vem do socket direto, que

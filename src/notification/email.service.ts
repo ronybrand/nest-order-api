@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as nodemailer from 'nodemailer';
-import { EnvConfig } from '../config/env.config';
+import { EnvConfig, getEnv } from '../config/env.config';
 import { OrderStatusChangedEvent } from '../order/order-status-changed.event';
 import { maskEmail } from '../common/security/sensitive.decorator';
 import { buildOrderStatusEmailHtml } from './order-status-email.template';
@@ -25,7 +25,7 @@ export class EmailService {
         `${event.oldStatus} -> ${event.newStatus}`,
     );
 
-    const smtp = this.configService.get<EnvConfig['smtp']>('env.smtp')!;
+    const smtp = getEnv(this.configService, 'smtp');
     try {
       await this.getTransporter(smtp).sendMail({
         from: smtp.from,
