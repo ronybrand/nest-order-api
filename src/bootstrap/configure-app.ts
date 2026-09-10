@@ -19,6 +19,14 @@ const PERMISSIONS_POLICY = 'camera=(), microphone=(), geolocation=()';
 export function configureApp(app: NestExpressApplication): void {
   const config = app.get(ConfigService);
   const cors = config.get<EnvConfig['cors']>('env.cors')!;
+  const trustedProxies = config.get<EnvConfig['trustedProxies']>('env.trustedProxies')!;
+
+  // Sem proxies confiáveis configurados, mantém o padrão seguro do Express
+  // (`false`): X-Forwarded-For é ignorado e req.ip vem do socket direto, que
+  // um cliente não consegue spoofar. Só passamos a confiar em X-Forwarded-For
+  // quando o hop imediato (req.socket.remoteAddress) está nessa allowlist -
+  // é o próprio Express que faz essa verificação ao resolver req.ip.
+  app.set('trust proxy', trustedProxies.length > 0 ? trustedProxies : false);
 
   app.use(
     helmet({

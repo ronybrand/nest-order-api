@@ -13,6 +13,8 @@ export interface EnvConfig {
     points: number;
     duration: number;
   };
+  /** IPs (ou faixas CIDR) de proxies/load balancers confiáveis - ver parseTrustedProxies. */
+  trustedProxies: string[];
   rabbitmq: {
     url: string;
   };
@@ -40,6 +42,21 @@ function parseCorsAllowedOrigins(): string[] {
   return origins;
 }
 
+/**
+ * Sem TRUSTED_PROXIES, express não confia em X-Forwarded-For e usa o IP do
+ * socket direto - seguro por padrão. Só quando o app roda atrás de um
+ * proxy/load balancer conhecido (ex. ALB, nginx) é que essa lista deve ser
+ * preenchida, para que o rate limiter (req.ip) resolva o IP real do cliente
+ * em vez do IP do proxy, sem abrir brecha para spoofing de X-Forwarded-For
+ * por um cliente direto.
+ */
+function parseTrustedProxies(): string[] {
+  return (process.env.TRUSTED_PROXIES ?? '')
+    .split(',')
+    .map((proxy) => proxy.trim())
+    .filter(Boolean);
+}
+
 export const envConfig = registerAs(
   'env',
   (): EnvConfig => ({
@@ -55,6 +72,7 @@ export const envConfig = registerAs(
       points: Number(process.env.RATE_LIMIT_POINTS ?? 100),
       duration: Number(process.env.RATE_LIMIT_DURATION_SECONDS ?? 60),
     },
+    trustedProxies: parseTrustedProxies(),
     rabbitmq: {
       url: process.env.RABBITMQ_URL ?? 'amqp://guest:guest@localhost:5672',
     },

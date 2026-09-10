@@ -117,4 +117,22 @@ describe('Hardening (e2e)', () => {
     expect(res.headers['x-request-id']).toBe('e2e-fixed-request-id');
     expect(res.body.requestId).toBe('e2e-fixed-request-id');
   });
+
+  // Ultimo teste do arquivo de proposito: uma vez que o limite (RATE_LIMIT_POINTS,
+  // default 100) e excedido, a janela em memoria continua contando ate expirar -
+  // qualquer teste que reusasse este `app` depois deste ficaria bloqueado tambem.
+  it('returns 429 with Retry-After once the request rate limit is exceeded', async () => {
+    const requestsOverLimit = 105;
+
+    let lastResponse;
+    for (let i = 0; i < requestsOverLimit; i += 1) {
+      lastResponse = await request(app.getHttpServer()).get(
+        '/customers/00000000-0000-0000-0000-000000000000',
+      );
+    }
+
+    expect(lastResponse!.status).toBe(429);
+    expect(lastResponse!.body.errorCode).toBe('VALIDATION_RATE_LIMIT_EXCEEDED');
+    expect(lastResponse!.headers['retry-after']).toBeDefined();
+  }, 30_000);
 });
