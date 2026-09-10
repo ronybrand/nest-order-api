@@ -22,8 +22,6 @@ import { Roles } from '../common/auth/roles.decorator';
 import { Role } from '../common/auth/role.enum';
 import { SearchRequestDto } from '../common/filter/search-request.dto';
 import { SearchService } from '../common/filter/search.service';
-import { parseOrderParam, parsePageParam, parseSizeParam } from '../common/filter/pagination-query.util';
-import { toPageResponse } from '../common/filter/page-response.util';
 
 @ApiTags('customers')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -42,23 +40,21 @@ export class CustomerController {
   }
 
   @Get('search')
-  async searchByGetMethod(@Query() query: Record<string, unknown>) {
-    const criteria = this.searchService.parseQueryFilters(query);
-    const page = await this.customerService.search(
-      criteria,
-      query.sort as string | undefined,
-      parseOrderParam(query.order),
-      parsePageParam(query.page),
-      parseSizeParam(query.size),
+  searchByGetMethod(@Query() query: SearchRequestDto) {
+    return this.searchService.executeSearch(
+      query,
+      (criteria, sort, order, page, size) => this.customerService.search(criteria, sort, order, page, size),
+      CustomerResponseDto.from,
     );
-    return toPageResponse(page, CustomerResponseDto.from);
   }
 
   @Post('search')
-  async searchByPostMethod(@Body() body: SearchRequestDto) {
-    const criteria = this.searchService.parseBodyFilters(body);
-    const page = await this.customerService.search(criteria, body.sort, body.order, body.page, body.size);
-    return toPageResponse(page, CustomerResponseDto.from);
+  searchByPostMethod(@Body() body: SearchRequestDto) {
+    return this.searchService.executeSearch(
+      body,
+      (criteria, sort, order, page, size) => this.customerService.search(criteria, sort, order, page, size),
+      CustomerResponseDto.from,
+    );
   }
 
   @Get(':id')

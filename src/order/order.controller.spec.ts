@@ -36,8 +36,7 @@ describe('OrderController', () => {
         {
           provide: SearchService,
           useValue: {
-            parseQueryFilters: jest.fn(),
-            parseBodyFilters: jest.fn(),
+            executeSearch: jest.fn(),
           },
         },
       ],
@@ -130,47 +129,30 @@ describe('OrderController', () => {
       updatedAt: new Date(),
     }) as unknown as Order;
 
-  it('parses query filters and pagination for GET search, mapping content to DTOs', async () => {
-    searchService.parseQueryFilters.mockReturnValue([]);
-    service.search.mockResolvedValue({
-      content: [orderFixture()],
-      page: 0,
-      size: 20,
-      totalElements: 1,
-      totalPages: 1,
-    });
+  const pageFixture = { content: [], page: 0, size: 20, totalElements: 0, totalPages: 0 };
 
-    const result = await controller.searchByGetMethod({ sort: 'status', order: 'desc', page: '2', size: '10' });
+  it('delegates GET search to searchService.executeSearch with the query dto and orderService.search', async () => {
+    searchService.executeSearch.mockResolvedValue(pageFixture);
+    const query = { sort: 'status', order: 'desc' as const, page: 2, size: 10 } as SearchRequestDto;
 
-    expect(searchService.parseQueryFilters).toHaveBeenCalled();
+    const result = await controller.searchByGetMethod(query);
+
+    expect(result).toBe(pageFixture);
+    expect(searchService.executeSearch).toHaveBeenCalledWith(query, expect.any(Function), OrderResponseDto.from);
+
+    const searchFn = searchService.executeSearch.mock.calls[0][1];
+    service.search.mockResolvedValue({ content: [orderFixture()], page: 2, size: 10, totalElements: 1, totalPages: 1 });
+    await searchFn([], 'status', 'desc', 2, 10);
     expect(service.search).toHaveBeenCalledWith([], 'status', 'desc', 2, 10);
-    expect(result.content[0]).toBeInstanceOf(OrderResponseDto);
   });
 
-  it('falls back to safe pagination defaults for invalid GET search params', async () => {
-    searchService.parseQueryFilters.mockReturnValue([]);
-    service.search.mockResolvedValue({ content: [], page: 0, size: 20, totalElements: 0, totalPages: 0 });
+  it('delegates POST search to searchService.executeSearch with the body dto and orderService.search', async () => {
+    searchService.executeSearch.mockResolvedValue(pageFixture);
+    const body = { sort: 'status', order: 'asc' as const, page: 0, size: 20, filter: {} } as SearchRequestDto;
 
-    await controller.searchByGetMethod({ order: 'sideways', page: 'nan', size: '0' });
+    const result = await controller.searchByPostMethod(body);
 
-    expect(service.search).toHaveBeenCalledWith([], undefined, 'asc', 0, 20);
-  });
-
-  it('parses body filters for POST search, mapping content to DTOs', async () => {
-    const body = { sort: 'status', order: 'asc' as const, page: 0, size: 20, filter: {} };
-    searchService.parseBodyFilters.mockReturnValue([]);
-    service.search.mockResolvedValue({
-      content: [orderFixture()],
-      page: 0,
-      size: 20,
-      totalElements: 1,
-      totalPages: 1,
-    });
-
-    const result = await controller.searchByPostMethod(body as SearchRequestDto);
-
-    expect(searchService.parseBodyFilters).toHaveBeenCalledWith(body);
-    expect(service.search).toHaveBeenCalledWith([], body.sort, body.order, body.page, body.size);
-    expect(result.content[0]).toBeInstanceOf(OrderResponseDto);
+    expect(result).toBe(pageFixture);
+    expect(searchService.executeSearch).toHaveBeenCalledWith(body, expect.any(Function), OrderResponseDto.from);
   });
 });
