@@ -5,6 +5,16 @@ import { InvalidInputException } from '../exceptions/domain.exception';
 import { FilterCriterion, SearchRequestDto } from './search-request.dto';
 import { Operator } from './operator.enum';
 import { PaginationConfig } from '../config/pagination.config';
+import { toPageResponse } from './page-response.util';
+
+/** Assinatura comum aos `search()` de CustomerService/OrderService - o que `executeSearch` chama por dentro. */
+type SearchFn<T> = (
+  criteria: FilterCriterion[],
+  sort: string | undefined,
+  order: 'asc' | 'desc' | undefined,
+  page: number | undefined,
+  size: number | undefined,
+) => Promise<Page<T>>;
 
 export interface Page<T> {
   content: T[];
@@ -48,6 +58,25 @@ export class SearchService {
 
   parseBodyFilters(body: SearchRequestDto): FilterCriterion[] {
     return this.parseQueryFilters({ filter: body.filter } as Record<string, unknown>);
+  }
+
+  /**
+   * Rotas `GET .../search` e `POST .../search` dos controllers de domínio
+   * delegam para cá - só variam o `searchFn` (ex. `customerService.search`)
+   * e o mapper de resposta (ex. `CustomerResponseDto.from`). `dto` já chega
+   * validado pelo ValidationPipe global (whitelist + coerção de page/size via
+   * @Type em SearchRequestDto), seja via @Query() ou @Body() - por isso um
+   * único método cobre as duas rotas em vez de reimplementar parse manual de
+   * query string.
+   */
+  async executeSearch<T extends ObjectLiteral, R>(
+    dto: SearchRequestDto,
+    searchFn: SearchFn<T>,
+    mapper: (entity: T) => R,
+  ): Promise<Page<R>> {
+    const criteria = this.parseBodyFilters(dto);
+    const page = await searchFn(criteria, dto.sort, dto.order, dto.page, dto.size);
+    return toPageResponse(page, mapper);
   }
 
   async search<T extends ObjectLiteral>(

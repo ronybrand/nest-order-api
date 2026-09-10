@@ -24,8 +24,6 @@ import { Roles } from '../common/auth/roles.decorator';
 import { Role } from '../common/auth/role.enum';
 import { SearchRequestDto } from '../common/filter/search-request.dto';
 import { SearchService } from '../common/filter/search.service';
-import { parseOrderParam, parsePageParam, parseSizeParam } from '../common/filter/pagination-query.util';
-import { toPageResponse } from '../common/filter/page-response.util';
 
 @ApiTags('orders')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -43,23 +41,21 @@ export class OrderController {
   }
 
   @Get('search')
-  async searchByGetMethod(@Query() query: Record<string, unknown>) {
-    const criteria = this.searchService.parseQueryFilters(query);
-    const page = await this.orderService.search(
-      criteria,
-      query.sort as string | undefined,
-      parseOrderParam(query.order),
-      parsePageParam(query.page),
-      parseSizeParam(query.size),
+  searchByGetMethod(@Query() query: SearchRequestDto) {
+    return this.searchService.executeSearch(
+      query,
+      (criteria, sort, order, page, size) => this.orderService.search(criteria, sort, order, page, size),
+      OrderResponseDto.from,
     );
-    return toPageResponse(page, OrderResponseDto.from);
   }
 
   @Post('search')
-  async searchByPostMethod(@Body() body: SearchRequestDto) {
-    const criteria = this.searchService.parseBodyFilters(body);
-    const page = await this.orderService.search(criteria, body.sort, body.order, body.page, body.size);
-    return toPageResponse(page, OrderResponseDto.from);
+  searchByPostMethod(@Body() body: SearchRequestDto) {
+    return this.searchService.executeSearch(
+      body,
+      (criteria, sort, order, page, size) => this.orderService.search(criteria, sort, order, page, size),
+      OrderResponseDto.from,
+    );
   }
 
   @Get(':id')

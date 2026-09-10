@@ -1,3 +1,4 @@
+import { Type } from 'class-transformer';
 import { IsIn, IsInt, IsObject, IsOptional, IsString, Min } from 'class-validator';
 import { Operator } from './operator.enum';
 import { PaginationConfig } from '../config/pagination.config';
@@ -26,12 +27,17 @@ export class SearchRequestDto {
   @IsIn(['asc', 'desc'])
   order?: 'asc' | 'desc' = 'asc';
 
+  // @Type converte a string vinda da query string (GET .../search) para number
+  // antes de validar - o mesmo DTO é usado para @Query() e @Body(), e no body
+  // (JSON) o valor já chega como number, então a conversão é um no-op ali.
   @IsOptional()
+  @Type(() => Number)
   @IsInt()
   @Min(0)
   page?: number = 0;
 
   @IsOptional()
+  @Type(() => Number)
   @IsInt()
   @Min(1)
   size?: number = PaginationConfig.defaultSize;

@@ -65,6 +65,49 @@ describe('SearchService', () => {
     });
   });
 
+  /**
+   * Rota GET e POST .../search dos controllers de domínio delegam para cá -
+   * ver customer.controller.ts/order.controller.ts. O mesmo SearchRequestDto
+   * (já validado pelo ValidationPipe global, seja via @Query() ou @Body())
+   * alimenta os dois, então um único método cobre ambos.
+   */
+  describe('executeSearch', () => {
+    it('parses dto.filter, calls searchFn with dto.sort/order/page/size, and maps the page content', async () => {
+      const searchFn = jest.fn().mockResolvedValue({
+        content: [{ id: '1' }],
+        page: 2,
+        size: 10,
+        totalElements: 1,
+        totalPages: 1,
+      });
+      const mapper = (entity: { id: string }) => ({ mapped: entity.id });
+
+      const result = await service.executeSearch(
+        { filter: { status: 'OPEN' }, sort: 'status', order: 'desc', page: 2, size: 10 } as never,
+        searchFn,
+        mapper,
+      );
+
+      expect(searchFn).toHaveBeenCalledWith(
+        [{ field: 'status', operator: Operator.EQ, value: 'OPEN' }],
+        'status',
+        'desc',
+        2,
+        10,
+      );
+      expect(result.content).toEqual([{ mapped: '1' }]);
+      expect(result.page).toBe(2);
+    });
+
+    it('passes through an absent filter as an empty criteria list', async () => {
+      const searchFn = jest.fn().mockResolvedValue({ content: [], page: 0, size: 20, totalElements: 0, totalPages: 0 });
+
+      await service.executeSearch({ sort: 'name' } as never, searchFn, (x) => x);
+
+      expect(searchFn).toHaveBeenCalledWith([], 'name', undefined, undefined, undefined);
+    });
+  });
+
   describe('search', () => {
     it('scopes to non-deleted rows when the entity has a deletedAt column', async () => {
       const qb = mockQueryBuilder();

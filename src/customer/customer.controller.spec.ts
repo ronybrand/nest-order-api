@@ -2,7 +2,6 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { CustomerController } from './customer.controller';
 import { CustomerService } from './customer.service';
 import { SearchService } from '../common/filter/search.service';
-import { Customer } from './customer.entity';
 import { CustomerRequestDto } from './dto/customer-request.dto';
 import { CustomerResponseDto } from './dto/customer-response.dto';
 import { SearchRequestDto } from '../common/filter/search-request.dto';
@@ -30,8 +29,7 @@ describe('CustomerController', () => {
         {
           provide: SearchService,
           useValue: {
-            parseQueryFilters: jest.fn(),
-            parseBodyFilters: jest.fn(),
+            executeSearch: jest.fn(),
           },
         },
       ],
@@ -80,47 +78,30 @@ describe('CustomerController', () => {
     expect(service.delete).toHaveBeenCalledWith('c1');
   });
 
-  it('parses query filters and pagination for GET search, mapping content to DTOs', async () => {
-    searchService.parseQueryFilters.mockReturnValue([]);
-    service.search.mockResolvedValue({
-      content: [{ id: 'c1' } as Customer],
-      page: 0,
-      size: 20,
-      totalElements: 1,
-      totalPages: 1,
-    });
+  const pageFixture = { content: [], page: 0, size: 20, totalElements: 0, totalPages: 0 };
 
-    const result = await controller.searchByGetMethod({ sort: 'name', order: 'desc', page: '1', size: '5' });
+  it('delegates GET search to searchService.executeSearch with the query dto and customerService.search', async () => {
+    searchService.executeSearch.mockResolvedValue(pageFixture);
+    const query = { sort: 'name', order: 'desc' as const, page: 1, size: 5 } as SearchRequestDto;
 
-    expect(searchService.parseQueryFilters).toHaveBeenCalled();
+    const result = await controller.searchByGetMethod(query);
+
+    expect(result).toBe(pageFixture);
+    expect(searchService.executeSearch).toHaveBeenCalledWith(query, expect.any(Function), CustomerResponseDto.from);
+
+    const searchFn = searchService.executeSearch.mock.calls[0][1];
+    service.search.mockResolvedValue({ content: [], page: 1, size: 5, totalElements: 0, totalPages: 0 });
+    await searchFn([], 'name', 'desc', 1, 5);
     expect(service.search).toHaveBeenCalledWith([], 'name', 'desc', 1, 5);
-    expect(result.content[0]).toBeInstanceOf(CustomerResponseDto);
   });
 
-  it('falls back to safe pagination defaults for invalid GET search params', async () => {
-    searchService.parseQueryFilters.mockReturnValue([]);
-    service.search.mockResolvedValue({ content: [], page: 0, size: 20, totalElements: 0, totalPages: 0 });
+  it('delegates POST search to searchService.executeSearch with the body dto and customerService.search', async () => {
+    searchService.executeSearch.mockResolvedValue(pageFixture);
+    const body = { sort: 'name', order: 'asc' as const, page: 0, size: 20, filter: {} } as SearchRequestDto;
 
-    await controller.searchByGetMethod({ order: 'sideways', page: 'nan', size: '-1' });
+    const result = await controller.searchByPostMethod(body);
 
-    expect(service.search).toHaveBeenCalledWith([], undefined, 'asc', 0, 20);
-  });
-
-  it('parses body filters for POST search, mapping content to DTOs', async () => {
-    const body = { sort: 'name', order: 'asc' as const, page: 0, size: 20, filter: {} };
-    searchService.parseBodyFilters.mockReturnValue([]);
-    service.search.mockResolvedValue({
-      content: [{ id: 'c1' } as Customer],
-      page: 0,
-      size: 20,
-      totalElements: 1,
-      totalPages: 1,
-    });
-
-    const result = await controller.searchByPostMethod(body as SearchRequestDto);
-
-    expect(searchService.parseBodyFilters).toHaveBeenCalledWith(body);
-    expect(service.search).toHaveBeenCalledWith([], body.sort, body.order, body.page, body.size);
-    expect(result.content[0]).toBeInstanceOf(CustomerResponseDto);
+    expect(result).toBe(pageFixture);
+    expect(searchService.executeSearch).toHaveBeenCalledWith(body, expect.any(Function), CustomerResponseDto.from);
   });
 });
