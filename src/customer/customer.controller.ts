@@ -27,6 +27,7 @@ import { toPageResponse } from '../common/filter/page-response.util';
 
 @ApiTags('customers')
 @UseGuards(JwtAuthGuard, RolesGuard)
+@Roles(Role.USER, Role.ADMIN)
 @Controller('customers')
 export class CustomerController {
   constructor(
@@ -41,7 +42,6 @@ export class CustomerController {
   }
 
   @Get('search')
-  @Roles(Role.USER, Role.ADMIN)
   async searchByGetMethod(@Query() query: Record<string, unknown>) {
     const criteria = this.searchService.parseQueryFilters(query);
     const page = await this.customerService.search(
@@ -55,7 +55,6 @@ export class CustomerController {
   }
 
   @Post('search')
-  @Roles(Role.USER, Role.ADMIN)
   async searchByPostMethod(@Body() body: SearchRequestDto) {
     const criteria = this.searchService.parseBodyFilters(body);
     const page = await this.customerService.search(criteria, body.sort, body.order, body.page, body.size);
@@ -63,7 +62,6 @@ export class CustomerController {
   }
 
   @Get(':id')
-  @Roles(Role.USER, Role.ADMIN)
   findById(@Param('id', ParseUUIDPipe) id: string): Promise<CustomerResponseDto> {
     return this.customerService.findById(id);
   }
