@@ -3,6 +3,12 @@ import { envConfig } from './env.config';
 describe('envConfig', () => {
   const originalEnv = { ...process.env };
 
+  beforeEach(() => {
+    // CORS_ALLOWED_ORIGINS e obrigatorio (fail-fast) - default valido para os
+    // testes que nao exercitam esse comportamento especificamente.
+    process.env.CORS_ALLOWED_ORIGINS = 'http://localhost:3000';
+  });
+
   afterEach(() => {
     process.env = { ...originalEnv };
   });
@@ -31,5 +37,25 @@ describe('envConfig', () => {
 
     expect(config.pagination).toEqual({ defaultPage: 1, defaultSize: 50, maxSize: 200 });
     expect(config.rateLimit).toEqual({ points: 10, duration: 5 });
+  });
+
+  it('parses a comma-separated CORS_ALLOWED_ORIGINS into a trimmed array', () => {
+    process.env.CORS_ALLOWED_ORIGINS = 'http://localhost:3000, https://example.com ,https://foo.com';
+
+    const config = envConfig();
+
+    expect(config.cors.allowedOrigins).toEqual(['http://localhost:3000', 'https://example.com', 'https://foo.com']);
+  });
+
+  it('fails fast when CORS_ALLOWED_ORIGINS is unset', () => {
+    delete process.env.CORS_ALLOWED_ORIGINS;
+
+    expect(() => envConfig()).toThrow(/CORS_ALLOWED_ORIGINS/);
+  });
+
+  it('fails fast when CORS_ALLOWED_ORIGINS is empty/blank', () => {
+    process.env.CORS_ALLOWED_ORIGINS = '  , ,';
+
+    expect(() => envConfig()).toThrow(/CORS_ALLOWED_ORIGINS/);
   });
 });

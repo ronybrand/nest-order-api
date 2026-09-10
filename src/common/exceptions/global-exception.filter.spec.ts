@@ -3,6 +3,7 @@ import { OptimisticLockVersionMismatchError, QueryFailedError } from 'typeorm';
 import { GlobalExceptionFilter } from './global-exception.filter';
 import { ErrorCode } from './error-code.enum';
 import { InvalidInputException, ResourceNotFoundException } from './domain.exception';
+import { requestContextStorage } from '../http/request-context';
 
 function mockHost() {
   const response = {
@@ -100,6 +101,17 @@ describe('GlobalExceptionFilter', () => {
     expect(response.json).toHaveBeenCalledWith(
       expect.objectContaining({ errorCode: ErrorCode.VALIDATION_CONSTRAINT_VIOLATION, message: 'bad input' }),
     );
+  });
+
+  it('includes the current request id in the error body when a request context is active', () => {
+    const { host, response } = mockHost();
+    const error = new BadRequestException('bad input');
+
+    requestContextStorage.run({ requestId: 'req-abc-123' }, () => {
+      filter.catch(error, host);
+    });
+
+    expect(response.json).toHaveBeenCalledWith(expect.objectContaining({ requestId: 'req-abc-123' }));
   });
 
   it('maps an unknown exception to 500 INTERNAL_ERROR without leaking details', () => {

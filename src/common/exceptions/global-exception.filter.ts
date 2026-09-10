@@ -9,6 +9,7 @@ import {
 import { Request, Response } from 'express';
 import { OptimisticLockVersionMismatchError, QueryFailedError } from 'typeorm';
 import { ErrorCode } from './error-code.enum';
+import { currentRequestId } from '../http/request-context';
 
 /**
  * Único ponto de tradução de exceção -> resposta HTTP. Nunca formate erro
@@ -38,7 +39,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       const status = exception.getStatus();
       const body = exception.getResponse();
       if (typeof body === 'object' && body !== null && 'errorCode' in body) {
-        response.status(status).json(body);
+        response.status(status).json({ ...body, requestId: currentRequestId() });
         return;
       }
       this.send(response, status, this.defaultCodeFor(status), exception.message);
@@ -65,6 +66,6 @@ export class GlobalExceptionFilter implements ExceptionFilter {
   }
 
   private send(response: Response, status: number, errorCode: ErrorCode, message: string): void {
-    response.status(status).json({ errorCode, message, params: {} });
+    response.status(status).json({ errorCode, message, params: {}, requestId: currentRequestId() });
   }
 }

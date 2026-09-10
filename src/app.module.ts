@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
 import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
@@ -11,6 +11,7 @@ import { CustomerModule } from './customer/customer.module';
 import { OrderModule } from './order/order.module';
 import { NotificationModule } from './notification/notification.module';
 import { CurrentUserInterceptor } from './common/audit/current-user.interceptor';
+import { RequestIdMiddleware } from './common/http/request-id.middleware';
 
 @Module({
   imports: [
@@ -42,4 +43,11 @@ import { CurrentUserInterceptor } from './common/audit/current-user.interceptor'
     { provide: APP_INTERCEPTOR, useClass: CurrentUserInterceptor },
   ],
 })
-export class AppModule {}
+export class AppModule implements NestModule {
+  // Middleware (nao guard/interceptor) porque precisa rodar antes do
+  // RateLimiterGuard/JwtAuthGuard - todo request, inclusive os rejeitados por
+  // auth, ganha um request id correlacionavel em logs e na resposta de erro.
+  configure(consumer: MiddlewareConsumer): void {
+    consumer.apply(RequestIdMiddleware).forRoutes('*');
+  }
+}

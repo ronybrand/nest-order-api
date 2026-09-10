@@ -1,6 +1,9 @@
 import { registerAs } from '@nestjs/config';
 
 export interface EnvConfig {
+  cors: {
+    allowedOrigins: string[];
+  };
   pagination: {
     defaultPage: number;
     defaultSize: number;
@@ -21,9 +24,28 @@ export interface EnvConfig {
 }
 
 /** Factory único registrado via ConfigModule.forRoot({ load: [envConfig] }) para centralizar leitura de env vars. */
+function parseCorsAllowedOrigins(): string[] {
+  const origins = (process.env.CORS_ALLOWED_ORIGINS ?? '')
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+
+  // Fail-fast: uma CORS_ALLOWED_ORIGINS vazia significaria silenciosamente
+  // bloquear toda origem (ou, pior, um enableCors mal configurado liberando
+  // tudo) - preferimos que o boot quebre de forma obvia a esse silencio.
+  if (origins.length === 0) {
+    throw new Error('CORS_ALLOWED_ORIGINS must be set to at least one non-empty origin');
+  }
+
+  return origins;
+}
+
 export const envConfig = registerAs(
   'env',
   (): EnvConfig => ({
+    cors: {
+      allowedOrigins: parseCorsAllowedOrigins(),
+    },
     pagination: {
       defaultPage: Number(process.env.PAGINATION_DEFAULT_PAGE ?? 0),
       defaultSize: Number(process.env.PAGINATION_DEFAULT_SIZE ?? 20),
