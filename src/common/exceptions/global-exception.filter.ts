@@ -73,6 +73,8 @@ export class GlobalExceptionFilter implements ExceptionFilter {
         return ErrorCode.VALIDATION_CONSTRAINT_VIOLATION;
       case HttpStatus.FORBIDDEN:
         return ErrorCode.AUTHORIZATION_ACCESS_DENIED;
+      case HttpStatus.TOO_MANY_REQUESTS:
+        return ErrorCode.VALIDATION_RATE_LIMIT_EXCEEDED;
       default:
         return ErrorCode.INTERNAL_ERROR;
     }

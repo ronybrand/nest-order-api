@@ -19,11 +19,21 @@ describe('envConfig', () => {
     delete process.env.PAGINATION_MAX_SIZE;
     delete process.env.RATE_LIMIT_POINTS;
     delete process.env.RATE_LIMIT_DURATION_SECONDS;
+    delete process.env.TRUSTED_PROXIES;
 
     const config = envConfig();
 
     expect(config.pagination).toEqual({ defaultPage: 0, defaultSize: 20, maxSize: 100 });
     expect(config.rateLimit).toEqual({ points: 100, duration: 60 });
+    expect(config.trustedProxies).toEqual([]);
+  });
+
+  it('parses a comma-separated TRUSTED_PROXIES into a trimmed array', () => {
+    process.env.TRUSTED_PROXIES = '10.0.0.1, 10.0.0.2 ,172.16.0.0/12';
+
+    const config = envConfig();
+
+    expect(config.trustedProxies).toEqual(['10.0.0.1', '10.0.0.2', '172.16.0.0/12']);
   });
 
   it('parses overridden env vars into typed numbers', () => {
