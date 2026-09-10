@@ -114,6 +114,22 @@ describe('GlobalExceptionFilter', () => {
     expect(response.json).toHaveBeenCalledWith(expect.objectContaining({ requestId: 'req-abc-123' }));
   });
 
+  it('maps a body-parser PayloadTooLargeError (entity.too.large) to 413', () => {
+    const { host, response } = mockHost();
+    const error = Object.assign(new Error('request entity too large'), {
+      status: 413,
+      type: 'entity.too.large',
+      expose: true,
+    });
+
+    filter.catch(error, host);
+
+    expect(response.status).toHaveBeenCalledWith(HttpStatus.PAYLOAD_TOO_LARGE);
+    expect(response.json).toHaveBeenCalledWith(
+      expect.objectContaining({ errorCode: ErrorCode.VALIDATION_PAYLOAD_TOO_LARGE }),
+    );
+  });
+
   it('maps an unknown exception to 500 INTERNAL_ERROR without leaking details', () => {
     const { host, response } = mockHost();
     const error = new Error('boom, stack trace with secrets');
