@@ -22,11 +22,20 @@ jobs:
           npx --yes semver -r "$ts_eslint_range" -- 7.0.0 >/dev/null 2>&1 && ts_ok="no - update available"
           echo "ts_ok=$ts_ok" >> "$GITHUB_OUTPUT"
 
+          throttler_range=$(npm view @nestjs/throttler@latest "peerDependencies.@nestjs/common")
+          echo "throttler_range=$throttler_range" >> "$GITHUB_OUTPUT"
+
+          throttler_ok="yes"
+          npx --yes semver -r "$throttler_range" -- 12.0.0 >/dev/null 2>&1 && throttler_ok="no - update available"
+          echo "throttler_ok=$throttler_ok" >> "$GITHUB_OUTPUT"
+
       - name: Build report
         id: report
         env:
           TS_ESLINT_RANGE: ${{ steps.peers.outputs.ts_eslint_range }}
           TS_OK: ${{ steps.peers.outputs.ts_ok }}
+          THROTTLER_RANGE: ${{ steps.peers.outputs.throttler_range }}
+          THROTTLER_OK: ${{ steps.peers.outputs.throttler_ok }}
         run: |
           body=$(cat <<EOF
           Monthly check of the major-version \`ignore\` rule in [\`dependabot.yml\`](../blob/master/.github/dependabot.yml).
@@ -34,8 +43,9 @@ jobs:
           | Rule | Signal | Still needed? |
           | --- | --- | --- |
           | \`typescript\` major | @typescript-eslint/eslint-plugin\@latest peer range: \`$TS_ESLINT_RANGE\` (allows typescript 7.0.0?) | $TS_OK |
+          | \`@nestjs/*\` major | @nestjs/throttler\@latest peer range for @nestjs/common: \`$THROTTLER_RANGE\` (allows nestjs 12.0.0?) | $THROTTLER_OK |
 
-          If the row says "no", remove the rule from \`dependabot.yml\`, let dependabot open the bump PR, and confirm CI passes before merging.
+          If a row says "no", remove that rule from \`dependabot.yml\`, let dependabot open the bump PR, and confirm CI passes before merging.
           EOF
           )
           echo "body<<BODYEOF" >> "$GITHUB_OUTPUT"

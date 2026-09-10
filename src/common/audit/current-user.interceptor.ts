@@ -1,11 +1,7 @@
 import { CallHandler, ExecutionContext, Injectable, NestInterceptor } from '@nestjs/common';
-import { Request } from 'express';
 import { Observable } from 'rxjs';
 import { currentUserStorage } from './current-user';
-
-interface AuthenticatedRequest extends Request {
-  user?: { username?: string; roles?: string[] };
-}
+import { AuthenticatedRequest } from '../auth/jwt.strategy';
 
 /**
  * Precisa ser um interceptor, não um middleware: middlewares do Express

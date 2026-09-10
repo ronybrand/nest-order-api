@@ -1,15 +1,11 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as amqp from 'amqplib';
-import { EnvConfig } from '../config/env.config';
+import { getEnv } from '../config/env.config';
 import { OrderStatusChangedEvent } from '../order/order-status-changed.event';
 import { EmailService } from './email.service';
-import {
-  MAX_RETRIES,
-  ORDER_STATUS_CHANGED_DLQ,
-  ORDER_STATUS_CHANGED_QUEUE,
-  QUEUE_ARGUMENTS,
-} from './rabbitmq.constants';
+import { MAX_RETRIES, ORDER_STATUS_CHANGED_QUEUE } from './rabbitmq.constants';
+import { AmqpConnectionManager } from './amqp-connection-manager';
 
 const RECONNECT_DELAY_MS = 5_000;
 const RETRY_BACKOFF_MS = 2_000;
@@ -48,14 +44,24 @@ function isOrderStatusChangedEvent(value: unknown): value is OrderStatusChangedE
 @Injectable()
 export class RabbitMqConsumer implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(RabbitMqConsumer.name);
-  private connection?: amqp.ChannelModel;
+  private readonly amqp: AmqpConnectionManager;
   private channel?: amqp.Channel;
   private destroyed = false;
 
   constructor(
-    private readonly configService: ConfigService,
+    configService: ConfigService,
     private readonly emailService: EmailService,
-  ) {}
+  ) {
+    this.amqp = new AmqpConnectionManager(
+      this.logger,
+      () => getEnv(configService, 'rabbitmq').url,
+      () => {
+        this.channel = undefined;
+        this.logger.warn('RabbitMQ connection closed, reconnecting...');
+        void this.connectWithRetry();
+      },
+    );
+  }
 
   onModuleInit(): void {
     void this.connectWithRetry();
@@ -64,20 +70,8 @@ export class RabbitMqConsumer implements OnModuleInit, OnModuleDestroy {
   private async connectWithRetry(): Promise<void> {
     while (!this.destroyed) {
       try {
-        const url = this.configService.get<EnvConfig['rabbitmq']>('env.rabbitmq')!.url;
-        this.connection = await amqp.connect(url);
-        this.connection.on('error', (error) => this.logger.error('RabbitMQ connection error', error));
-        this.connection.on('close', () => {
-          if (!this.destroyed) {
-            this.logger.warn('RabbitMQ connection closed, reconnecting...');
-            void this.connectWithRetry();
-          }
-        });
-        this.channel = await this.connection.createChannel();
-        await this.channel.assertQueue(ORDER_STATUS_CHANGED_DLQ, { durable: true });
-        await this.channel.assertQueue(ORDER_STATUS_CHANGED_QUEUE, { durable: true, arguments: QUEUE_ARGUMENTS });
+        this.channel = await this.amqp.getChannel();
         await this.channel.prefetch(10);
-
         await this.channel.consume(ORDER_STATUS_CHANGED_QUEUE, (message) => {
           if (message) {
             void this.handleMessage(message);
@@ -93,25 +87,33 @@ export class RabbitMqConsumer implements OnModuleInit, OnModuleDestroy {
     }
   }
 
+  /** Guarda de acesso ao canal em vez de `this.channel!` - erro explícito se chamado fora de uma consume() ativa. */
+  private requireChannel(): amqp.Channel {
+    if (!this.channel) {
+      throw new Error('RabbitMQ channel not initialized');
+    }
+    return this.channel;
+  }
+
   private async handleMessage(message: amqp.ConsumeMessage): Promise<void> {
     let payload: unknown;
     try {
       payload = JSON.parse(message.content.toString());
     } catch (error) {
       this.logger.error('Malformed order status message, sending to DLQ', error as Error);
-      this.channel!.nack(message, false, false);
+      this.requireChannel().nack(message, false, false);
       return;
     }
 
     if (!isOrderStatusChangedEvent(payload)) {
       this.logger.error('Order status message missing required fields, sending to DLQ');
-      this.channel!.nack(message, false, false);
+      this.requireChannel().nack(message, false, false);
       return;
     }
 
     try {
       await this.emailService.sendOrderStatusEmail(payload);
-      this.channel!.ack(message);
+      this.requireChannel().ack(message);
     } catch (error) {
       await this.retryOrDeadLetter(message, error as Error);
     }
@@ -123,23 +125,22 @@ export class RabbitMqConsumer implements OnModuleInit, OnModuleDestroy {
 
     if (retryCount > MAX_RETRIES) {
       this.logger.error(`Exceeded ${MAX_RETRIES} retries, sending message to DLQ`, error);
-      this.channel!.nack(message, false, false);
+      this.requireChannel().nack(message, false, false);
       return;
     }
 
     this.logger.warn(`Failed to process message (attempt ${retryCount}/${MAX_RETRIES}), retrying`, error);
     await new Promise((resolve) => setTimeout(resolve, RETRY_BACKOFF_MS));
-    this.channel!.sendToQueue(ORDER_STATUS_CHANGED_QUEUE, message.content, {
+    this.requireChannel().sendToQueue(ORDER_STATUS_CHANGED_QUEUE, message.content, {
       persistent: true,
       contentType: 'application/json',
       headers: { ...message.properties.headers, 'x-retry-count': retryCount },
     });
-    this.channel!.ack(message);
+    this.requireChannel().ack(message);
   }
 
   async onModuleDestroy(): Promise<void> {
     this.destroyed = true;
-    await this.channel?.close();
-    await this.connection?.close();
+    await this.amqp.close();
   }
 }
