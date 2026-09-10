@@ -101,9 +101,10 @@ export class CustomerService {
     }
     const exists = await qb.getExists();
     if (exists) {
-      throw new ConflictException(ErrorCode.VALIDATION_CUSTOMER_TAXID_EXISTS, `taxId "${taxId}" already exists`, {
-        taxId,
-      });
+      // Mensagem sem o valor de taxId de propósito: params.taxId é a via
+      // estruturada para esse dado e passa pelo mascaramento automático do
+      // GlobalExceptionFilter antes de chegar ao cliente (ver Sensitive()).
+      throw new ConflictException(ErrorCode.VALIDATION_CUSTOMER_TAXID_EXISTS, 'taxId already exists', { taxId });
     }
   }
 
@@ -119,11 +120,11 @@ export class CustomerService {
     }
     const exists = await qb.getExists();
     if (exists) {
-      throw new ConflictException(
-        ErrorCode.VALIDATION_CUSTOMER_PASSPORT_EXISTS,
-        `passportNumber "${passportNumber}" already exists`,
-        { passportNumber },
-      );
+      // Mensagem sem o valor de passportNumber - ver comentário equivalente
+      // em ensureTaxIdIsUniqueOrThrow acima.
+      throw new ConflictException(ErrorCode.VALIDATION_CUSTOMER_PASSPORT_EXISTS, 'passportNumber already exists', {
+        passportNumber,
+      });
     }
   }
 

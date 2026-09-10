@@ -3,15 +3,24 @@ import 'reflect-metadata';
 const SENSITIVE_FIELDS_KEY = 'sensitive:fields';
 
 /**
+ * Nomes de campo (não amarrados a uma classe específica) já vistos em algum
+ * `@Sensitive()`. Alimenta `maskSensitiveDeep()`, que mascara por nome de
+ * chave em qualquer objeto (ex. `params` de uma exceção de domínio) sem
+ * precisar da instância/classe original — ver GlobalExceptionFilter.
+ */
+const globalSensitiveFieldNames = new Set<string>();
+
+/**
  * Marca um campo de entidade/DTO como PII (LGPD/GDPR) — nunca deve
  * aparecer em log, toString/console ou serialização de erro em texto claro.
  * Infra central única: anote o campo, o mascaramento é automático via
- * `maskSensitive()`. Não crie exclusão manual por classe.
+ * `maskSensitive()`/`maskSensitiveDeep()`. Não crie exclusão manual por classe.
  */
 export function Sensitive(): PropertyDecorator {
   return (target: object, propertyKey: string | symbol) => {
     const existing: (string | symbol)[] = Reflect.getMetadata(SENSITIVE_FIELDS_KEY, target.constructor) ?? [];
     Reflect.defineMetadata(SENSITIVE_FIELDS_KEY, [...existing, propertyKey], target.constructor);
+    globalSensitiveFieldNames.add(String(propertyKey));
   };
 }
 
@@ -31,6 +40,28 @@ export function maskSensitive<T extends object>(instance: T): Record<string, unk
     masked[key] = sensitiveFields.has(key) && value != null ? '***' : value;
   }
   return masked;
+}
+
+/**
+ * Mascara recursivamente qualquer chave já registrada por `@Sensitive()`,
+ * em qualquer nível de um objeto/array arbitrário — sem exigir a classe da
+ * entidade original. Único ponto usado pelo GlobalExceptionFilter para
+ * sanitizar `params` de exceção antes de serializar para o cliente: um
+ * service nunca precisa lembrar de mascarar manualmente ao montar o payload
+ * de erro, o que fecha a lacuna de vazamento de PII em respostas de erro.
+ */
+export function maskSensitiveDeep<T>(value: T): T {
+  if (Array.isArray(value)) {
+    return value.map((item) => maskSensitiveDeep(item)) as unknown as T;
+  }
+  if (value !== null && typeof value === 'object' && !(value instanceof Date)) {
+    const masked: Record<string, unknown> = {};
+    for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
+      masked[key] = globalSensitiveFieldNames.has(key) && entry != null ? '***' : maskSensitiveDeep(entry);
+    }
+    return masked as unknown as T;
+  }
+  return value;
 }
 
 /**

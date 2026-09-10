@@ -146,13 +146,17 @@ describe('Order flow (e2e)', () => {
       .send(createCustomerPayload({ taxId: 'DUPLICATE-TAX-1', email: 'first@example.com' }))
       .expect(201);
 
-    await request(app.getHttpServer())
+    const conflict = await request(app.getHttpServer())
       .post('/customers')
       .set('Authorization', `Bearer ${adminToken}`)
       .send(createCustomerPayload({ taxId: 'DUPLICATE-TAX-1', email: 'second@example.com' }))
       .expect(409);
 
     expect(first.body.id).toBeDefined();
+    // @Sensitive: o taxId não pode aparecer em texto claro na resposta de
+    // erro, nem na mensagem nem em params (ver GlobalExceptionFilter).
+    expect(JSON.stringify(conflict.body)).not.toContain('DUPLICATE-TAX-1');
+    expect(conflict.body.params).toEqual({ taxId: '***' });
   });
 
   let orderId: string;
