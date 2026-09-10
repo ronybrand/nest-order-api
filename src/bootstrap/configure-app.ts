@@ -6,7 +6,7 @@ import helmet from 'helmet';
 import { GlobalExceptionFilter } from '../common/exceptions/global-exception.filter';
 import { EnvConfig } from '../config/env.config';
 
-/** 1MB - mesmo limite documentado na referencia Java (MaxRequestSizeFilter). */
+/** 1MB - limite conservador o suficiente para o payload deste dominio (Customer/Order/Item). */
 export const MAX_REQUEST_BODY_SIZE = '1mb';
 
 const PERMISSIONS_POLICY = 'camera=(), microphone=(), geolocation=()';
