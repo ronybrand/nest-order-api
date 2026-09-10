@@ -5,7 +5,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { EventEmitterModule } from '@nestjs/event-emitter';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { typeOrmConfig } from './database/typeorm.config';
-import { envConfig, EnvConfig } from './config/env.config';
+import { envConfig, getEnv } from './config/env.config';
 import { CommonModule } from './common/common.module';
 import { CustomerModule } from './customer/customer.module';
 import { OrderModule } from './order/order.module';
@@ -21,7 +21,7 @@ import { RequestIdMiddleware } from './common/http/request-id.middleware';
     ThrottlerModule.forRootAsync({
       inject: [ConfigService],
       useFactory: (configService: ConfigService) => {
-        const rateLimit = configService.get<EnvConfig['rateLimit']>('env.rateLimit')!;
+        const rateLimit = getEnv(configService, 'rateLimit');
         // ttl em ms; storage em memória (default) expira as janelas
         // automaticamente, sem exigir limpeza manual.
         return { throttlers: [{ limit: rateLimit.points, ttl: rateLimit.duration * 1000 }] };

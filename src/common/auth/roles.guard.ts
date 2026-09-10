@@ -1,12 +1,8 @@
 import { CanActivate, ExecutionContext, ForbiddenException, Injectable } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import { Request } from 'express';
 import { Role } from './role.enum';
 import { ROLES_KEY } from './roles.decorator';
-
-interface AuthenticatedRequest extends Request {
-  user?: { username: string; roles: string[] };
-}
+import { AuthenticatedRequest } from './jwt.strategy';
 
 /**
  * Resolve autenticação (via JwtAuthGuard, aplicado antes deste) e papel.
