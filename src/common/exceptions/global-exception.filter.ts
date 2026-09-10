@@ -10,6 +10,7 @@ import { Request, Response } from 'express';
 import { OptimisticLockVersionMismatchError, QueryFailedError } from 'typeorm';
 import { ErrorCode } from './error-code.enum';
 import { currentRequestId } from '../http/request-context';
+import { maskSensitiveDeep } from '../security/sensitive.decorator';
 
 /**
  * Único ponto de tradução de exceção -> resposta HTTP. Nunca formate erro
@@ -19,6 +20,12 @@ import { currentRequestId } from '../http/request-context';
 @Catch()
 export class GlobalExceptionFilter implements ExceptionFilter {
   private readonly logger = new Logger(GlobalExceptionFilter.name);
+
+  private static readonly DEFAULT_CODE_BY_STATUS: Partial<Record<HttpStatus, ErrorCode>> = {
+    [HttpStatus.BAD_REQUEST]: ErrorCode.VALIDATION_CONSTRAINT_VIOLATION,
+    [HttpStatus.FORBIDDEN]: ErrorCode.AUTHORIZATION_ACCESS_DENIED,
+    [HttpStatus.TOO_MANY_REQUESTS]: ErrorCode.VALIDATION_RATE_LIMIT_EXCEEDED,
+  };
 
   catch(exception: unknown, host: ArgumentsHost): void {
     const ctx = host.switchToHttp();
@@ -44,7 +51,12 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       const status = exception.getStatus();
       const body = exception.getResponse();
       if (typeof body === 'object' && body !== null && 'errorCode' in body) {
-        response.status(status).json({ ...body, requestId: currentRequestId() });
+        // DomainException.params pode conter valores enviados pelo próprio
+        // cliente (ex. taxId de um conflito) - mascaramos por chave mesmo
+        // assim, estruturalmente, para que nenhum campo @Sensitive escape
+        // em texto claro numa resposta de erro por esquecimento no service.
+        const params = maskSensitiveDeep((body as { params?: unknown }).params ?? {});
+        response.status(status).json({ ...body, params, requestId: currentRequestId() });
         return;
       }
       this.send(response, status, this.defaultCodeFor(status), exception.message);
@@ -68,16 +80,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
   }
 
   private defaultCodeFor(status: number): ErrorCode {
-    switch (status) {
-      case HttpStatus.BAD_REQUEST:
-        return ErrorCode.VALIDATION_CONSTRAINT_VIOLATION;
-      case HttpStatus.FORBIDDEN:
-        return ErrorCode.AUTHORIZATION_ACCESS_DENIED;
-      case HttpStatus.TOO_MANY_REQUESTS:
-        return ErrorCode.VALIDATION_RATE_LIMIT_EXCEEDED;
-      default:
-        return ErrorCode.INTERNAL_ERROR;
-    }
+    return GlobalExceptionFilter.DEFAULT_CODE_BY_STATUS[status as HttpStatus] ?? ErrorCode.INTERNAL_ERROR;
   }
 
   private send(response: Response, status: number, errorCode: ErrorCode, message: string): void {

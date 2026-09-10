@@ -2,8 +2,17 @@ import { ArgumentsHost, BadRequestException, HttpStatus } from '@nestjs/common';
 import { OptimisticLockVersionMismatchError, QueryFailedError } from 'typeorm';
 import { GlobalExceptionFilter } from './global-exception.filter';
 import { ErrorCode } from './error-code.enum';
-import { InvalidInputException, ResourceNotFoundException } from './domain.exception';
+import { ConflictException, InvalidInputException, ResourceNotFoundException } from './domain.exception';
 import { requestContextStorage } from '../http/request-context';
+import { Sensitive } from '../security/sensitive.decorator';
+
+// Registra `taxId` no mesmo registro global que `Customer` alimenta via
+// `@Sensitive()` - suficiente para o teste sem precisar importar a entidade.
+class SensitiveFieldProbe {
+  @Sensitive()
+  taxId!: string;
+}
+void SensitiveFieldProbe;
 
 function mockHost() {
   const response = {
@@ -77,6 +86,19 @@ describe('GlobalExceptionFilter', () => {
       message: 'Order 123 not found',
       params: { id: '123' },
     });
+  });
+
+  it('masks a @Sensitive param (e.g. taxId) in a domain exception response', () => {
+    const { host, response } = mockHost();
+    const error = new ConflictException(ErrorCode.VALIDATION_CUSTOMER_TAXID_EXISTS, 'taxId already exists', {
+      taxId: '123.456.789-00',
+    });
+
+    filter.catch(error, host);
+
+    expect(response.json).toHaveBeenCalledWith(
+      expect.objectContaining({ params: { taxId: '***' } }),
+    );
   });
 
   it('maps an InvalidInputException to 400 with its own errorCode', () => {
