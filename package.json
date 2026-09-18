@@ -18,6 +18,7 @@
     "migration:generate": "npm run typeorm -- migration:generate",
     "migration:run": "npm run typeorm -- migration:run",
     "migration:revert": "npm run typeorm -- migration:revert",
+    "docs:export": "node scripts/export-openapi.js",
     "verify": "npm run lint -- --max-warnings=0 && npm run build && npm run test:cov && npm run test:e2e"
   },
   "dependencies": {
