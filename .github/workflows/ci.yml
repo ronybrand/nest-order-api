@@ -42,6 +42,53 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+  # Pega migration desatualizada em relacao as entities (ex.: alguem adiciona uma coluna sem
+  # gerar a migration correspondente) antes que vire drift em producao - equivalente ao
+  # `alembic check` do fastapi-order-api, adaptado pro TypeORM (que nao tem um comando
+  # "check" dedicado): roda as migrations existentes, tenta gerar uma nova a partir do estado
+  # atual das entities, e falha se o TypeORM encontrar alguma diferenca pra gerar.
+  migration:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: nest_order_api
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm ci
+      - run: npm run migration:run
+      - name: Check for schema drift
+        run: |
+          set +e
+          OUTPUT=$(npm run typeorm -- migration:generate tmp/DriftCheck 2>&1)
+          EXIT_CODE=$?
+          set -e
+          echo "$OUTPUT"
+          if echo "$OUTPUT" | grep -q "No changes in database schema were found"; then
+            echo "No drift detected."
+            exit 0
+          elif [ $EXIT_CODE -eq 0 ]; then
+            echo "::error::Schema drift detected - entities changed without a matching migration (see generated file above)."
+            exit 1
+          else
+            echo "::error::migration:generate failed for a reason unrelated to drift."
+            exit $EXIT_CODE
+          fi
+
   docker-build:
     needs: test
     runs-on: ubuntu-latest
