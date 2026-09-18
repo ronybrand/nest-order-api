@@ -29,6 +29,9 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     super({
       jwtFromRequest: ExtractJwtFromRequest,
       ignoreExpiration: false,
+      // JWT_PUBLIC_KEY_PATH vem de env var de configuracao do operador (nunca de input de
+      // request/usuario) - sem risco de path traversal controlado por um cliente.
+      // eslint-disable-next-line security/detect-non-literal-fs-filename
       secretOrKey: readFileSync(config.getOrThrow<string>('JWT_PUBLIC_KEY_PATH')),
       audience: config.getOrThrow<string>('JWT_AUDIENCE'),
       algorithms: ['RS256'],
