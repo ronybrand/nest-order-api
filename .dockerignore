@@ -1,0 +1,10 @@
+node_modules/
+dist/
+dist-openapi/
+coverage/
+.git/
+test/
+docs/
+README.md
+DOMAIN.md
+AGENTS.md
