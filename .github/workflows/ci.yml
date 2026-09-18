@@ -31,3 +31,42 @@ jobs:
       # test:e2e usa Testcontainers: sobe seu proprio Postgres via Docker, ja disponivel
       # nativamente nos runners hospedados do GitHub - sem precisar de um services: aqui.
       - run: npm run test:e2e
+      # Gera o snapshot do OpenAPI a partir do build (dist/, com o plugin do
+      # @nestjs/swagger habilitado no nest-cli.json) - mesmo Testcontainers
+      # Postgres do test:e2e, ver scripts/export-openapi.js.
+      - run: npm run docs:export
+      - uses: actions/upload-artifact@v4
+        with:
+          name: openapi-spec
+          path: dist-openapi/openapi.json
+          if-no-files-found: error
+          retention-days: 7
+
+  # Publica um snapshot estatico do OpenAPI spec (ver comentario no job `test`
+  # acima) como pagina Redoc - a unica forma de ver o formato da API sem
+  # clonar o repo e rodar `docker compose up`. So em push pra main. O
+  # environment/permissions `github-pages` aqui e o contrato exigido pelo
+  # proprio actions/deploy-pages, sem relacao com OIDC/AWS.
+  pages:
+    needs: test
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v4
+        with:
+          name: openapi-spec
+          path: site
+      - run: cp docs/api-docs/index.html site/index.html
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+      - uses: actions/deploy-pages@v4
+        id: deployment
