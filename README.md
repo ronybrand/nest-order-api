@@ -221,6 +221,11 @@ Full development conventions (the "how" of each layer) live in the
 the summarized checklist to validate before any change. The skill is versioned in a
 separate private repository — it isn't included in this public repo.
 
+### Architecture decisions
+
+Non-obvious technical decisions (and the alternatives considered) are logged in
+[`docs/adr/`](./docs/adr/README.md) as Architecture Decision Records.
+
 ## Running locally
 
 ```bash

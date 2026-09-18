@@ -29,6 +29,9 @@ describe('Hardening (e2e)', () => {
     });
     tmpDir = mkdtempSync(join(tmpdir(), 'nest-order-api-hardening-'));
     const publicKeyPath = join(tmpDir, 'public.pem');
+    // Path montado a partir de mkdtempSync (diretorio temp gerado pelo proprio teste), nao
+    // de input externo.
+    // eslint-disable-next-line security/detect-non-literal-fs-filename
     writeFileSync(publicKeyPath, publicKey);
 
     process.env.TESTCONTAINERS_RYUK_DISABLED = 'true';
