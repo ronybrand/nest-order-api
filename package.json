@@ -76,7 +76,7 @@
   },
   "overrides": {
     "babel-plugin-istanbul": "^8.0.2",
-    "js-yaml": "^5.2.3",
+    "js-yaml": "^5.4.1",
     "glob": "^13.0.6",
     "eslint": {
       "minimatch": {
