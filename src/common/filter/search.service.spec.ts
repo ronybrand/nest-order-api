@@ -1,5 +1,6 @@
 import { SearchService } from './search.service';
 import { Operator } from './operator.enum';
+import { SearchLimits } from './search-limits';
 import { InvalidInputException } from '../exceptions/domain.exception';
 
 type MockQueryBuilder = {
@@ -259,6 +260,136 @@ describe('SearchService', () => {
 
       const [, params] = qb.andWhere.mock.calls[0];
       expect(Object.keys(params)).toEqual(['total_0From', 'total_0To']);
+    });
+  });
+});
+
+describe('SearchService typed filters, limits and paging bounds', () => {
+  const service = new SearchService();
+
+  const columns = [
+    { propertyName: 'id', type: 'uuid' },
+    { propertyName: 'name', type: 'varchar' },
+    { propertyName: 'total', type: 'decimal' },
+    { propertyName: 'quantity', type: 'int' },
+    { propertyName: 'active', type: 'boolean' },
+    { propertyName: 'createdAt', type: 'timestamptz' },
+    { propertyName: 'status', type: 'enum', enum: ['OPEN', 'CONFIRMED'] },
+  ];
+
+  function repo(qb: MockQueryBuilder) {
+    return { createQueryBuilder: jest.fn(() => qb), metadata: { columns } };
+  }
+
+  const run = (criteria: { field: string; operator: Operator; value: string }[], page = 0, size = 20) => {
+    const qb = mockQueryBuilder();
+    return { qb, result: service.search(repo(qb) as never, 'e', criteria, undefined, 'asc', page, size) };
+  };
+
+  it('passes a coerced value to the database instead of the raw text', async () => {
+    const { qb, result } = run([{ field: 'quantity', operator: Operator.GT, value: '5' }]);
+    await result;
+    expect(qb.andWhere).toHaveBeenCalledWith('e.quantity > :quantity_0', { quantity_0: 5 });
+  });
+
+  it.each([
+    ['id', Operator.EQ, 'not-a-uuid'],
+    ['quantity', Operator.GTE, '1.5'],
+    ['total', Operator.LT, 'abc'],
+    ['active', Operator.EQ, 'yes'],
+    ['createdAt', Operator.GTE, 'yesterday'],
+    ['status', Operator.EQ, 'NOPE'],
+  ])('rejects an invalid %s value for %s with a 400 instead of a database error', async (field, operator, value) => {
+    const { result } = run([{ field, operator, value }]);
+    await expect(result).rejects.toThrow(InvalidInputException);
+  });
+
+  it.each([Operator.LT, Operator.LTE, Operator.GT, Operator.GTE, Operator.BETWEEN])(
+    'rejects the ordering operator %s on an enum column',
+    async (operator) => {
+      const { result } = run([{ field: 'status', operator, value: 'OPEN,CONFIRMED' }]);
+      await expect(result).rejects.toThrow(InvalidInputException);
+    },
+  );
+
+  it('rejects an ordering operator on a boolean column', async () => {
+    const { result } = run([{ field: 'active', operator: Operator.GT, value: 'true' }]);
+    await expect(result).rejects.toThrow(InvalidInputException);
+  });
+
+  it('allows lk only on text columns', async () => {
+    const { result } = run([{ field: 'quantity', operator: Operator.LK, value: '1' }]);
+    await expect(result).rejects.toThrow(InvalidInputException);
+  });
+
+  it('escapes % and _ in lk so they match literally', async () => {
+    const { qb, result } = run([{ field: 'name', operator: Operator.LK, value: '50%_off\\' }]);
+    await result;
+    expect(qb.andWhere).toHaveBeenCalledWith("e.name ILIKE :name_0 ESCAPE '\\'", { name_0: '%50\\%\\_off\\\\%' });
+  });
+
+  it('coerces every element of an in list', async () => {
+    const { qb, result } = run([{ field: 'quantity', operator: Operator.IN, value: '1,2,3' }]);
+    await result;
+    expect(qb.andWhere).toHaveBeenCalledWith('e.quantity IN (:...quantity_0)', { quantity_0: [1, 2, 3] });
+  });
+
+  it('rejects an in list above the limit', async () => {
+    const value = Array.from({ length: SearchLimits.MAX_IN_VALUES + 1 }, (_, i) => i).join(',');
+    const { result } = run([{ field: 'quantity', operator: Operator.IN, value }]);
+    await expect(result).rejects.toThrow(InvalidInputException);
+  });
+
+  it('requires exactly two values for between', async () => {
+    await expect(run([{ field: 'quantity', operator: Operator.BETWEEN, value: '1' }]).result).rejects.toThrow(
+      InvalidInputException,
+    );
+    await expect(run([{ field: 'quantity', operator: Operator.BETWEEN, value: '1,2,3' }]).result).rejects.toThrow(
+      InvalidInputException,
+    );
+    const { qb, result } = run([{ field: 'quantity', operator: Operator.BETWEEN, value: '1,5' }]);
+    await result;
+    expect(qb.andWhere).toHaveBeenCalledWith('e.quantity BETWEEN :quantity_0From AND :quantity_0To', {
+      quantity_0From: 1,
+      quantity_0To: 5,
+    });
+  });
+
+  it('rejects an offset that does not fit a 32-bit integer', async () => {
+    const { result } = run([], 2_147_483_647, 100);
+    await expect(result).rejects.toThrow(InvalidInputException);
+  });
+
+  describe('parseQueryFilters limits', () => {
+    it('rejects more filter fields than the limit', () => {
+      const filter = Object.fromEntries(Array.from({ length: SearchLimits.MAX_FILTER_FIELDS + 1 }, (_, i) => [`f${i}`, 'x']));
+      expect(() => service.parseQueryFilters({ filter })).toThrow(InvalidInputException);
+    });
+
+    it('rejects more conditions on one field than the limit', () => {
+      const ops = ['eq', 'neq', 'lt', 'lte', 'gt', 'gte', 'in', 'between', 'lk'];
+      const value = Object.fromEntries(ops.map((op) => [op, '1']));
+      // 9 distinct operators fit under the limit of 10: the limit is on the count, so exceed it with a wide object
+      const wide = { ...value, ...Object.fromEntries(Array.from({ length: 5 }, (_, i) => [`eq${i}`, '1'])) };
+      expect(() => service.parseQueryFilters({ filter: { total: wide } })).toThrow(InvalidInputException);
+    });
+
+    it('rejects a value longer than the limit', () => {
+      const value = 'x'.repeat(SearchLimits.MAX_VALUE_LENGTH + 1);
+      expect(() => service.parseQueryFilters({ filter: { name: value } })).toThrow(InvalidInputException);
+    });
+
+    it('rejects a non-string operator value', () => {
+      expect(() => service.parseQueryFilters({ filter: { total: { gte: { nested: 'x' } } } })).toThrow(
+        InvalidInputException,
+      );
+    });
+
+    it('accepts every limit exactly', () => {
+      const filter = Object.fromEntries(
+        Array.from({ length: SearchLimits.MAX_FILTER_FIELDS }, (_, i) => [`f${i}`, 'x'.repeat(SearchLimits.MAX_VALUE_LENGTH)]),
+      );
+      expect(service.parseQueryFilters({ filter })).toHaveLength(SearchLimits.MAX_FILTER_FIELDS);
     });
   });
 });
