@@ -1,3 +1,5 @@
+import { HealthModule } from './health/health.module';
+import { rateLimitTrackerFrom } from './common/http/rate-limit-tracker';
 import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
 import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { ConfigModule, ConfigService } from '@nestjs/config';
@@ -24,13 +26,18 @@ import { RequestIdMiddleware } from './common/http/request-id.middleware';
         const rateLimit = getEnv(configService, 'rateLimit');
         // ttl em ms; storage em memória (default) expira as janelas
         // automaticamente, sem exigir limpeza manual.
-        return { throttlers: [{ limit: rateLimit.points, ttl: rateLimit.duration * 1000 }] };
+        return {
+          throttlers: [{ limit: rateLimit.points, ttl: rateLimit.duration * 1000 }],
+          // Balde por usuario (token verificado) e por endereco so para anonimos - ver rate-limit-tracker.ts.
+          getTracker: rateLimitTrackerFrom(configService),
+        };
       },
     }),
     CommonModule,
     CustomerModule,
     OrderModule,
     NotificationModule,
+    HealthModule,
   ],
   providers: [
     // ThrottlerGuard é global: protege todos os endpoints por padrão contra abuso.
