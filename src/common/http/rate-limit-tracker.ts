@@ -42,6 +42,6 @@ export function rateLimitTrackerFrom(config: ConfigService) {
     // eslint-disable-next-line security/detect-non-literal-fs-filename -- caminho vem da configuracao, nao de input
     publicKey: readFileSync(config.getOrThrow<string>('JWT_PUBLIC_KEY_PATH')),
     audience: config.getOrThrow<string>('JWT_AUDIENCE'),
-    issuer: config.get<string>('JWT_ISSUER'),
+    issuer: config.getOrThrow<string>('JWT_ISSUER'),
   });
 }

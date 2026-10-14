@@ -31,7 +31,14 @@ describe('Order flow (e2e)', () => {
   function tokenFor(username: string, roles: string[]): string {
     return jwtService.sign(
       { preferred_username: username, realm_access: { roles } },
-      { algorithm: 'RS256', privateKey, audience: 'nest-order-api', subject: username, expiresIn: '1h' },
+      {
+        algorithm: 'RS256',
+        privateKey,
+        audience: 'nest-order-api',
+        issuer: 'nest-order-api-tests',
+        subject: username,
+        expiresIn: '1h',
+      },
     );
   }
 
@@ -68,6 +75,7 @@ describe('Order flow (e2e)', () => {
     process.env.DB_DATABASE = 'nest_order_api_test';
     process.env.JWT_PUBLIC_KEY_PATH = publicKeyPath;
     process.env.JWT_AUDIENCE = 'nest-order-api';
+    process.env.JWT_ISSUER = 'nest-order-api-tests';
     process.env.CORS_ALLOWED_ORIGINS = 'http://localhost:3000';
 
     const { InitialSchema1690000000000 } = await import(
@@ -163,6 +171,29 @@ describe('Order flow (e2e)', () => {
     // erro, nem na mensagem nem em params (ver GlobalExceptionFilter).
     expect(JSON.stringify(conflict.body)).not.toContain('DUPLICATE-TAX-1');
     expect(conflict.body.params).toEqual({ taxId: '***' });
+  });
+
+  it('never leaves an active order under a deleted customer when the two race', async () => {
+    for (let attempt = 0; attempt < 10; attempt += 1) {
+      const customer = await request(app.getHttpServer())
+        .post('/customers')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send(createCustomerPayload({ taxId: `RACE-${attempt}-${Date.now()}`, email: `race${attempt}@example.com` }))
+        .expect(201);
+      const id: string = customer.body.id;
+
+      const [order, deletion] = await Promise.all([
+        request(app.getHttpServer())
+          .post('/orders')
+          .set('Authorization', `Bearer ${userToken}`)
+          .send({ customerId: id, items: [{ description: 'Widget', unitPrice: 1, quantity: 1 }] }),
+        request(app.getHttpServer()).delete(`/customers/${id}`).set('Authorization', `Bearer ${adminToken}`),
+      ]);
+
+      const orderCreated = order.status === 201;
+      const customerDeleted = deletion.status === 204;
+      expect(orderCreated && customerDeleted).toBe(false);
+    }
   });
 
   let orderId: string;

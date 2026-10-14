@@ -7,6 +7,11 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/). 
 
 ### Security
 
+- `JWT_ISSUER` passa a ser obrigatório (a API não sobe sem ele): antes o emissor só era conferido se a variável existisse.
+- `taxId` é validado, gravado e comparado na forma canônica (maiúsculas, sem `.`/`-`/`/`), com no mínimo 5 letras ou dígitos;
+  `"123.456-78"` e `"12345678"` deixam de ser dois cadastros do mesmo documento. Linhas já gravadas com pontuação ou minúsculas
+  precisam de um `UPDATE` de normalização antes do deploy.
+- Teste e2e da corrida entre excluir cliente e criar pedido.
 - Busca: valores de filtro convertidos ao tipo da coluna (uuid, inteiro, decimal, boolean, data ISO 8601, enum) em vez de
   irem crus ao Postgres (500 em valor inválido); `gt`/`lt`/`between` rejeitados em enum e boolean; `lk` só em texto e com
   `%`/`_` literais; limites de campos, condições, itens de `in`, tamanho de valor e offset.

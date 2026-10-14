@@ -246,8 +246,8 @@ npm run start:dev
 - Mailpit Web UI (inspect received emails): `http://localhost:8025`
 
 The API comes up at `http://localhost:3000`. Authentication is via JWT (RS256)
-validated against `JWT_PUBLIC_KEY_PATH`/`JWT_AUDIENCE` (and `JWT_ISSUER`, optional but recommended: when set, only tokens
-with that `iss` are accepted). A token must carry `sub` and `exp`, and `realm_access.roles` must be a list of strings; any
+validated against `JWT_PUBLIC_KEY_PATH`/`JWT_AUDIENCE` and `JWT_ISSUER` (required: only tokens
+with that `iss` are accepted; the app does not boot without it). A token must carry `sub` and `exp`, and `realm_access.roles` must be a list of strings; any
 other shape is a 401. Point it at your
 environment's OIDC provider (e.g. Keycloak) before calling any protected endpoint.
 

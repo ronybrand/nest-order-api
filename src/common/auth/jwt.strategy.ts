@@ -35,8 +35,9 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       // eslint-disable-next-line security/detect-non-literal-fs-filename
       secretOrKey: readFileSync(config.getOrThrow<string>('JWT_PUBLIC_KEY_PATH')),
       audience: config.getOrThrow<string>('JWT_AUDIENCE'),
-      // Opcional: so restringe o emissor quando JWT_ISSUER esta definido (nao quebra quem ainda nao configurou).
-      issuer: config.get<string>('JWT_ISSUER'),
+      // Obrigatorio: sem restringir o emissor, qualquer token assinado por uma chave compartilhada com outro
+      // emissor (mesmo realm, outro cliente) com o audience certo passaria. Falta de config derruba o boot.
+      issuer: config.getOrThrow<string>('JWT_ISSUER'),
       algorithms: ['RS256'],
     });
   }
