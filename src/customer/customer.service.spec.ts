@@ -11,7 +11,8 @@ type MockRepo = {
   findOneBy: jest.Mock;
   update: jest.Mock;
   createQueryBuilder: jest.Mock;
-  manager: { query: jest.Mock };
+  manager: { query: jest.Mock; transaction: jest.Mock };
+  tx: { findOne: jest.Mock; query: jest.Mock; update: jest.Mock };
 };
 
 function mockRepository(): MockRepo {
@@ -20,13 +21,15 @@ function mockRepository(): MockRepo {
     andWhere: jest.fn().mockReturnThis(),
     getExists: jest.fn(),
   };
+  const tx = { findOne: jest.fn(), query: jest.fn(), update: jest.fn() };
   return {
     create: jest.fn((dto) => dto),
     save: jest.fn(async (entity) => ({ id: 'generated-id', ...entity })),
     findOneBy: jest.fn(),
     update: jest.fn(),
     createQueryBuilder: jest.fn(() => qb),
-    manager: { query: jest.fn() },
+    manager: { query: jest.fn(), transaction: jest.fn(async (work: (m: unknown) => unknown) => work(tx)) },
+    tx,
   };
 }
 
@@ -81,22 +84,73 @@ describe('CustomerService', () => {
   });
 
   it('blocks deletion when the customer has associated orders', async () => {
-    repo.findOneBy.mockResolvedValue({ id: 'c1' } as Customer);
-    repo.manager.query.mockResolvedValue([{ exists: true }]);
+    repo.tx.findOne.mockResolvedValue({ id: 'c1' } as Customer);
+    repo.tx.query.mockResolvedValue([{ exists: true }]);
 
     await expect(service.delete('c1')).rejects.toBeInstanceOf(InvalidInputException);
-    expect(repo.update).not.toHaveBeenCalled();
+    expect(repo.tx.update).not.toHaveBeenCalled();
   });
 
   it('soft-deletes the customer when there are no associated orders', async () => {
-    repo.findOneBy.mockResolvedValue({ id: 'c1' } as Customer);
-    repo.manager.query.mockResolvedValue([{ exists: false }]);
+    repo.tx.findOne.mockResolvedValue({ id: 'c1' } as Customer);
+    repo.tx.query.mockResolvedValue([{ exists: false }]);
 
     await service.delete('c1');
 
-    expect(repo.update).toHaveBeenCalledWith(
+    expect(repo.tx.update).toHaveBeenCalledWith(
+      Customer,
       'c1',
       expect.objectContaining({ deletedAt: expect.any(Date), deletedBy: expect.any(String) }),
+    );
+  });
+
+  it('locks the customer row FOR UPDATE before checking for orders, all in one transaction', async () => {
+    const calls: string[] = [];
+    repo.tx.findOne.mockImplementation(async () => {
+      calls.push('lock');
+      return { id: 'c1' };
+    });
+    repo.tx.query.mockImplementation(async () => {
+      calls.push('orders-check');
+      return [{ exists: false }];
+    });
+    repo.tx.update.mockImplementation(async () => {
+      calls.push('soft-delete');
+    });
+
+    await service.delete('c1');
+
+    expect(repo.tx.findOne).toHaveBeenCalledWith(
+      Customer,
+      expect.objectContaining({ lock: { mode: 'pessimistic_write' } }),
+    );
+    expect(calls).toEqual(['lock', 'orders-check', 'soft-delete']);
+    expect(repo.manager.transaction).toHaveBeenCalledTimes(1);
+  });
+
+  it('answers 404 when the customer to delete does not exist', async () => {
+    repo.tx.findOne.mockResolvedValue(null);
+
+    await expect(service.delete('missing')).rejects.toBeInstanceOf(ResourceNotFoundException);
+    expect(repo.tx.update).not.toHaveBeenCalled();
+  });
+
+  it('takes a FOR SHARE lock on the customer when an order is being created for it', async () => {
+    const manager = { findOne: jest.fn().mockResolvedValue({ id: 'c1' }) };
+
+    await service.findEntityForShareOrThrow(manager as never, 'c1');
+
+    expect(manager.findOne).toHaveBeenCalledWith(
+      Customer,
+      expect.objectContaining({ lock: { mode: 'pessimistic_read' } }),
+    );
+  });
+
+  it('answers 404 instead of locking a customer that does not exist or was deleted', async () => {
+    const manager = { findOne: jest.fn().mockResolvedValue(null) };
+
+    await expect(service.findEntityForShareOrThrow(manager as never, 'gone')).rejects.toBeInstanceOf(
+      ResourceNotFoundException,
     );
   });
 

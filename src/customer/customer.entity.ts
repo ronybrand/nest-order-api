@@ -1,11 +1,11 @@
 import { Column, Entity, Index, PrimaryGeneratedColumn } from 'typeorm';
-import { AuditableBaseEntity } from '../common/audit/auditable.base-entity';
+import { VersionedAuditableBaseEntity } from '../common/audit/auditable.base-entity';
 import { Sensitive } from '../common/security/sensitive.decorator';
 
 @Entity('customers')
 @Index(['taxId'], { unique: true, where: '"deleted_at" IS NULL' })
 @Index(['passportNumber'], { unique: true, where: '"deleted_at" IS NULL AND "passport_number" IS NOT NULL' })
-export class Customer extends AuditableBaseEntity {
+export class Customer extends VersionedAuditableBaseEntity {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
 
