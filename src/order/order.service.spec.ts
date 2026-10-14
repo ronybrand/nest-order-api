@@ -23,9 +23,16 @@ function buildOrder(overrides: Partial<Order> = {}): Order {
 
 describe('OrderService', () => {
   let service: OrderService;
-  let orderRepo: { findOneBy: jest.Mock; create: jest.Mock; save: jest.Mock; update: jest.Mock };
+  let orderRepo: {
+    findOneBy: jest.Mock;
+    create: jest.Mock;
+    save: jest.Mock;
+    update: jest.Mock;
+    manager: { transaction: jest.Mock };
+  };
+  let txManager: { getRepository: jest.Mock };
   let itemRepo: { create: jest.Mock };
-  let customerService: { findEntityByIdOrThrow: jest.Mock };
+  let customerService: { findEntityByIdOrThrow: jest.Mock; findEntityForShareOrThrow: jest.Mock };
   let eventEmitter: { emit: jest.Mock };
   let module: TestingModule;
 
@@ -35,9 +42,11 @@ describe('OrderService', () => {
       create: jest.fn((dto) => Object.assign(new Order(), dto)),
       save: jest.fn(async (entity) => entity),
       update: jest.fn(),
+      manager: { transaction: jest.fn(async (work: (m: unknown) => unknown) => work(txManager)) },
     };
+    txManager = { getRepository: jest.fn(() => orderRepo) };
     itemRepo = { create: jest.fn((dto) => Object.assign(new Item(), dto)) };
-    customerService = { findEntityByIdOrThrow: jest.fn() };
+    customerService = { findEntityByIdOrThrow: jest.fn(), findEntityForShareOrThrow: jest.fn() };
     eventEmitter = { emit: jest.fn() };
 
     module = await Test.createTestingModule({
@@ -59,7 +68,7 @@ describe('OrderService', () => {
   });
 
   it('creates an order with total calculated from items', async () => {
-    customerService.findEntityByIdOrThrow.mockResolvedValue({ id: 'customer-1' });
+    customerService.findEntityForShareOrThrow.mockResolvedValue({ id: 'customer-1' });
 
     const result = await service.create({
       customerId: 'customer-1',
@@ -71,6 +80,33 @@ describe('OrderService', () => {
 
     expect(result.total).toBe('25.50');
     expect(result.status).toBe(OrderStatus.OPEN);
+  });
+
+  it('locks the customer FOR SHARE inside the same transaction that saves the order', async () => {
+    const calls: string[] = [];
+    customerService.findEntityForShareOrThrow.mockImplementation(async () => {
+      calls.push('lock-customer');
+      return { id: 'customer-1' };
+    });
+    orderRepo.save.mockImplementation(async (entity: Order) => {
+      calls.push('save-order');
+      return entity;
+    });
+
+    await service.create({ customerId: 'customer-1', items: [] });
+
+    expect(customerService.findEntityForShareOrThrow).toHaveBeenCalledWith(txManager, 'customer-1');
+    expect(calls).toEqual(['lock-customer', 'save-order']);
+    expect(orderRepo.manager.transaction).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not save anything when the customer for the new order does not exist', async () => {
+    customerService.findEntityForShareOrThrow.mockRejectedValue(
+      new ResourceNotFoundException('RESOURCE_NOT_FOUND_CUSTOMER' as never, 'Customer x not found', { id: 'x' }),
+    );
+
+    await expect(service.create({ customerId: 'x', items: [] })).rejects.toBeInstanceOf(ResourceNotFoundException);
+    expect(orderRepo.save).not.toHaveBeenCalled();
   });
 
   it('rejects adding items when order is not OPEN', async () => {

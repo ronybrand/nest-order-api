@@ -37,17 +37,21 @@ export class OrderService extends AbstractCrudService<Order> {
   }
 
   async create(dto: OrderCreateRequestDto): Promise<OrderResponseDto> {
-    const customer = await this.customerService.findEntityByIdOrThrow(dto.customerId);
-
-    const order = this.repository.create({
-      customer,
-      status: OrderStatus.OPEN,
-      items: dto.items.map((item) => this.toItemEntity(item)),
+    // O cliente e travado (FOR SHARE) na mesma transacao que grava o pedido: uma exclusao concorrente desse
+    // cliente espera esta transacao (ou e esperada por ela) em vez de se intercalar e deixar pedido ativo de
+    // cliente excluido.
+    const saved = await this.repository.manager.transaction(async (manager) => {
+      const customer = await this.customerService.findEntityForShareOrThrow(manager, dto.customerId);
+      const orders = manager.getRepository(Order);
+      const order = orders.create({
+        customer,
+        status: OrderStatus.OPEN,
+        items: dto.items.map((item) => this.toItemEntity(item)),
+      });
+      order.calculateTotal();
+      return orders.save(order);
     });
-    order.calculateTotal();
-
-    const saved = await this.repository.save(order);
-    this.logger.log(`Order created: id=${saved.id}, customerId=${customer.id}`);
+    this.logger.log(`Order created: id=${saved.id}, customerId=${saved.customer.id}`);
     return OrderResponseDto.from(saved);
   }
 
