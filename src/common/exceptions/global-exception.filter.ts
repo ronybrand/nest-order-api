@@ -23,6 +23,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
 
   private static readonly DEFAULT_CODE_BY_STATUS: Partial<Record<HttpStatus, ErrorCode>> = {
     [HttpStatus.BAD_REQUEST]: ErrorCode.VALIDATION_CONSTRAINT_VIOLATION,
+    [HttpStatus.UNAUTHORIZED]: ErrorCode.AUTHORIZATION_UNAUTHENTICATED,
     [HttpStatus.FORBIDDEN]: ErrorCode.AUTHORIZATION_ACCESS_DENIED,
     [HttpStatus.TOO_MANY_REQUESTS]: ErrorCode.VALIDATION_RATE_LIMIT_EXCEEDED,
   };
@@ -59,7 +60,10 @@ export class GlobalExceptionFilter implements ExceptionFilter {
         response.status(status).json({ ...body, params, requestId: currentRequestId() });
         return;
       }
-      this.send(response, status, this.defaultCodeFor(status), exception.message);
+      // 401: a mensagem do Passport/jsonwebtoken ("jwt expired", "invalid signature"...) diz ao atacante
+      // por que o token falhou; o cliente so recebe que precisa se autenticar.
+      const message = status === HttpStatus.UNAUTHORIZED ? 'Authentication required' : exception.message;
+      this.send(response, status, this.defaultCodeFor(status), message);
       return;
     }
 
