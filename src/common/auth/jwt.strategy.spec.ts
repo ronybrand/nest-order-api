@@ -26,7 +26,12 @@ describe('JwtStrategy', () => {
 
   const strategy = (extra: Record<string, string> = {}) =>
     new JwtStrategy(
-      new ConfigService({ JWT_PUBLIC_KEY_PATH: publicKeyPath, JWT_AUDIENCE: 'nest-order-api', ...extra }),
+      new ConfigService({
+        JWT_PUBLIC_KEY_PATH: publicKeyPath,
+        JWT_AUDIENCE: 'nest-order-api',
+        JWT_ISSUER: 'https://idp.example/realms/orders',
+        ...extra,
+      }),
     );
 
   const payload = (overrides: Partial<JwtPayload> = {}): JwtPayload => ({
@@ -80,13 +85,12 @@ describe('JwtStrategy', () => {
     expect(options.audience).toBe('nest-order-api');
   });
 
-  it('checks the issuer when JWT_ISSUER is configured', () => {
-    expect(verifyOptions(strategy({ JWT_ISSUER: 'https://idp.example/realms/orders' })).issuer).toBe(
-      'https://idp.example/realms/orders',
-    );
+  it('always checks the issuer', () => {
+    expect(verifyOptions(strategy()).issuer).toBe('https://idp.example/realms/orders');
+    expect(verifyOptions(strategy({ JWT_ISSUER: 'https://other.example' })).issuer).toBe('https://other.example');
   });
 
-  it('does not constrain the issuer when JWT_ISSUER is not configured', () => {
-    expect(verifyOptions(strategy()).issuer).toBeUndefined();
+  it('refuses to boot without JWT_ISSUER (a token from any issuer that shares the key would otherwise pass)', () => {
+    expect(() => strategy({ JWT_ISSUER: undefined as unknown as string })).toThrow(/JWT_ISSUER/);
   });
 });

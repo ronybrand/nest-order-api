@@ -51,6 +51,7 @@ describe('Hardening (e2e)', () => {
     process.env.DB_DATABASE = 'nest_order_api_test';
     process.env.JWT_PUBLIC_KEY_PATH = publicKeyPath;
     process.env.JWT_AUDIENCE = 'nest-order-api';
+    process.env.JWT_ISSUER = 'nest-order-api-tests';
     process.env.CORS_ALLOWED_ORIGINS = 'http://localhost:3000';
 
     const { InitialSchema1690000000000 } = await import(
