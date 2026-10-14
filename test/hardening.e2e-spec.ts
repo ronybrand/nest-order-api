@@ -13,6 +13,8 @@ import request from 'supertest';
  * ponta a ponta via HTTP real - o spec de fluxo de pedido (order-flow) nao
  * chama `configureApp`, entao nao prova nada sobre esse hardening.
  */
+const FIXED_REQUEST_ID = '3f2a9c1e-0000-4000-8000-000000000001';
+
 describe('Hardening (e2e)', () => {
   jest.setTimeout(120_000);
 
@@ -115,13 +117,27 @@ describe('Hardening (e2e)', () => {
     expect(res.headers['permissions-policy']).toBe('camera=(), microphone=(), geolocation=()');
   });
 
+  it('answers GET /health without authentication', async () => {
+    const res = await request(app.getHttpServer()).get('/health');
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ status: 'ok' });
+  });
+
+  it('replaces a client-supplied x-request-id that is not a UUID', async () => {
+    const res = await request(app.getHttpServer()).get('/health').set('x-request-id', 'forged - INFO - line');
+
+    expect(res.headers['x-request-id']).not.toBe('forged - INFO - line');
+    expect(res.headers['x-request-id']).toMatch(/^[0-9a-f-]{36}$/);
+  });
+
   it('propagates x-request-id into the error response body via the global exception filter', async () => {
     const res = await request(app.getHttpServer())
       .get('/customers/00000000-0000-0000-0000-000000000000')
-      .set('x-request-id', 'e2e-fixed-request-id');
+      .set('x-request-id', FIXED_REQUEST_ID);
 
-    expect(res.headers['x-request-id']).toBe('e2e-fixed-request-id');
-    expect(res.body.requestId).toBe('e2e-fixed-request-id');
+    expect(res.headers['x-request-id']).toBe(FIXED_REQUEST_ID);
+    expect(res.body.requestId).toBe(FIXED_REQUEST_ID);
   });
 
   // Ultimo teste do arquivo de proposito: uma vez que o limite (RATE_LIMIT_POINTS,

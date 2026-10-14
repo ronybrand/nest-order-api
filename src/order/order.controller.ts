@@ -24,6 +24,8 @@ import { Roles } from '../common/auth/roles.decorator';
 import { Role } from '../common/auth/role.enum';
 import { SearchRequestDto } from '../common/filter/search-request.dto';
 import { SearchService } from '../common/filter/search.service';
+import { Throttle } from '@nestjs/throttler';
+import { OrderRateLimit } from './order.constants';
 
 @ApiTags('orders')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -36,6 +38,7 @@ export class OrderController {
   ) {}
 
   @Post()
+  @Throttle(OrderRateLimit)
   create(@Body() dto: OrderCreateRequestDto): Promise<OrderResponseDto> {
     return this.orderService.create(dto);
   }
@@ -64,6 +67,7 @@ export class OrderController {
   }
 
   @Delete(':id')
+  @Throttle(OrderRateLimit)
   @Roles(Role.ADMIN)
   @HttpCode(HttpStatus.NO_CONTENT)
   delete(@Param('id', ParseUUIDPipe) id: string): Promise<void> {
@@ -71,11 +75,13 @@ export class OrderController {
   }
 
   @Post(':id/items')
+  @Throttle(OrderRateLimit)
   addItem(@Param('id', ParseUUIDPipe) id: string, @Body() dto: ItemRequestDto): Promise<OrderResponseDto> {
     return this.orderService.addItem(id, dto);
   }
 
   @Patch(':orderId/items/:itemId')
+  @Throttle(OrderRateLimit)
   updateItemQuantity(
     @Param('orderId', ParseUUIDPipe) orderId: string,
     @Param('itemId', ParseUUIDPipe) itemId: string,
@@ -85,6 +91,7 @@ export class OrderController {
   }
 
   @Delete(':orderId/items/:itemId')
+  @Throttle(OrderRateLimit)
   @Roles(Role.ADMIN)
   removeItem(
     @Param('orderId', ParseUUIDPipe) orderId: string,
@@ -94,12 +101,14 @@ export class OrderController {
   }
 
   @Post(':id/confirm')
+  @Throttle(OrderRateLimit)
   @Roles(Role.ADMIN)
   confirm(@Param('id', ParseUUIDPipe) id: string): Promise<OrderResponseDto> {
     return this.orderService.confirm(id);
   }
 
   @Post(':id/cancel')
+  @Throttle(OrderRateLimit)
   @Roles(Role.ADMIN)
   cancel(@Param('id', ParseUUIDPipe) id: string): Promise<OrderResponseDto> {
     return this.orderService.cancel(id);

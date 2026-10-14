@@ -1,3 +1,4 @@
+import { OrderRateLimit } from './order.constants';
 import { Test, TestingModule } from '@nestjs/testing';
 import { OrderController } from './order.controller';
 import { OrderService } from './order.service';
@@ -154,5 +155,23 @@ describe('OrderController', () => {
 
     expect(result).toBe(pageFixture);
     expect(searchService.executeSearch).toHaveBeenCalledWith(body, expect.any(Function), OrderResponseDto.from);
+  });
+});
+
+describe('OrderController write rate limit', () => {
+  const writeHandlers = ['create', 'delete', 'addItem', 'updateItemQuantity', 'removeItem', 'confirm', 'cancel'] as const;
+
+  it.each(writeHandlers)('%s has its own, stricter rate limit than the global one', (handler) => {
+    const proto = OrderController.prototype as unknown as Record<string, object>;
+
+    expect(Reflect.getMetadata('THROTTLER:LIMITdefault', proto[handler])).toBe(OrderRateLimit.default.limit);
+    expect(Reflect.getMetadata('THROTTLER:TTLdefault', proto[handler])).toBe(OrderRateLimit.default.ttl);
+  });
+
+  it('leaves reads on the global limit', () => {
+    const proto = OrderController.prototype as unknown as Record<string, object>;
+
+    expect(Reflect.getMetadata('THROTTLER:LIMITdefault', proto['findById'])).toBeUndefined();
+    expect(Reflect.getMetadata('THROTTLER:LIMITdefault', proto['searchByGetMethod'])).toBeUndefined();
   });
 });
