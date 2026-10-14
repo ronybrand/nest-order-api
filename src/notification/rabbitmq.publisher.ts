@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { getEnv } from '../config/env.config';
@@ -31,6 +32,8 @@ export class RabbitMqPublisher implements OnModuleDestroy {
     channel.sendToQueue(ORDER_STATUS_CHANGED_QUEUE, Buffer.from(JSON.stringify(event)), {
       persistent: true,
       contentType: 'application/json',
+      // O id viaja com a mensagem (e com os retries) para o consumidor reconhecer uma reentrega.
+      messageId: randomUUID(),
     });
   }
 

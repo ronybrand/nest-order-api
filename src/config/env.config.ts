@@ -22,6 +22,10 @@ export interface EnvConfig {
     host: string;
     port: number;
     from: string;
+    /** STARTTLS obrigatorio fora de desenvolvimento e sempre que houver usuario (ver parseSmtp). */
+    starttls: boolean;
+    user?: string;
+    password?: string;
   };
 }
 
@@ -64,6 +68,52 @@ function parseTrustedProxies(): string[] {
   return parseCsvEnv('TRUSTED_PROXIES', { required: false });
 }
 
+const SAFE_DEFAULT_ENVS = new Set(['development', 'test']);
+
+/** NODE_ENV ausente conta como desenvolvimento local; qualquer valor desconhecido conta como producao. */
+function isProduction(): boolean {
+  const env = process.env.NODE_ENV;
+  return env !== undefined && !SAFE_DEFAULT_ENVS.has(env);
+}
+
+/**
+ * O default guest:guest em texto claro so existe fora de producao; em producao a URL e obrigatoria e tem que
+ * ser amqps:// (a fila carrega e-mail e nome do cliente).
+ */
+function parseRabbitMqUrl(): string {
+  const url = process.env.RABBITMQ_URL;
+  if (!url) {
+    if (isProduction()) {
+      throw new Error('RABBITMQ_URL must be set when NODE_ENV is not development/test');
+    }
+    return 'amqp://guest:guest@localhost:5672';
+  }
+  if (isProduction() && !url.startsWith('amqps://')) {
+    throw new Error('RABBITMQ_URL must use amqps:// (TLS) when NODE_ENV is not development/test');
+  }
+  return url;
+}
+
+/**
+ * Default = Mailpit local (sem TLS). Fora de desenvolvimento STARTTLS e obrigatorio, e credencial nunca
+ * trafega em conexao sem TLS, em nenhum ambiente.
+ */
+function parseSmtp(): EnvConfig['smtp'] {
+  const starttls = process.env.SMTP_STARTTLS === 'true';
+  const user = process.env.SMTP_USER || undefined;
+  if (!starttls && (isProduction() || user)) {
+    throw new Error('SMTP_STARTTLS=true is required when NODE_ENV is not development/test and whenever SMTP_USER is set');
+  }
+  return {
+    host: process.env.SMTP_HOST ?? 'localhost',
+    port: Number(process.env.SMTP_PORT ?? 1025),
+    from: process.env.SMTP_FROM ?? 'no-reply@order-api.local',
+    starttls,
+    user,
+    password: user ? process.env.SMTP_PASSWORD : undefined,
+  };
+}
+
 export const envConfig = registerAs(
   'env',
   (): EnvConfig => ({
@@ -81,15 +131,9 @@ export const envConfig = registerAs(
     },
     trustedProxies: parseTrustedProxies(),
     rabbitmq: {
-      url: process.env.RABBITMQ_URL ?? 'amqp://guest:guest@localhost:5672',
+      url: parseRabbitMqUrl(),
     },
-    smtp: {
-      // Default: Mailpit (docker-compose), catch-all SMTP local para dev - nenhum e-mail
-      // real e enviado, mas o fluxo de envio via nodemailer roda de ponta a ponta.
-      host: process.env.SMTP_HOST ?? 'localhost',
-      port: Number(process.env.SMTP_PORT ?? 1025),
-      from: process.env.SMTP_FROM ?? 'no-reply@order-api.local',
-    },
+    smtp: parseSmtp(),
   }),
 );
 

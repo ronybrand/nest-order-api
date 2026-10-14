@@ -7,6 +7,8 @@ import { OrderStatus } from '../order/order-status.enum';
 
 jest.mock('amqplib');
 
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
 function buildEvent(): OrderStatusChangedEvent {
   return {
     orderId: 'order-1',
@@ -67,8 +69,19 @@ describe('RabbitMqPublisher', () => {
     expect(channel.sendToQueue).toHaveBeenCalledWith(
       ORDER_STATUS_CHANGED_QUEUE,
       Buffer.from(JSON.stringify(event)),
-      { persistent: true, contentType: 'application/json' },
+      { persistent: true, contentType: 'application/json', messageId: expect.stringMatching(UUID) },
     );
+  });
+
+  it('gives every published message its own id', async () => {
+    const channel = buildChannel();
+    (amqp.connect as jest.Mock).mockResolvedValue(buildConnection(channel));
+
+    await publisher.publish(buildEvent());
+    await publisher.publish(buildEvent());
+
+    const ids = channel.sendToQueue.mock.calls.map((call) => call[2].messageId);
+    expect(new Set(ids).size).toBe(2);
   });
 
   it('reuses the same channel across publish() calls', async () => {

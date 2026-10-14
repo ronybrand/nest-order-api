@@ -1,3 +1,4 @@
+import { PermanentEmailError } from './email.service';
 import { ConfigService } from '@nestjs/config';
 import * as amqp from 'amqplib';
 import { RabbitMqConsumer } from './rabbitmq.consumer';
@@ -12,6 +13,7 @@ import { OrderStatusChangedEvent } from '../order/order-status-changed.event';
 import { OrderStatus } from '../order/order-status.enum';
 
 jest.mock('amqplib');
+
 
 function buildEvent(): OrderStatusChangedEvent {
   return {
@@ -56,10 +58,11 @@ function buildConnection(channel: ReturnType<typeof buildChannel>) {
 function buildMessage(
   event: OrderStatusChangedEvent,
   headers: Record<string, unknown> = {},
+  messageId?: string,
 ): amqp.ConsumeMessage {
   return {
     content: Buffer.from(JSON.stringify(event)),
-    properties: { headers },
+    properties: { headers, messageId },
   } as unknown as amqp.ConsumeMessage;
 }
 
@@ -264,5 +267,95 @@ describe('RabbitMqConsumer', () => {
     await jest.advanceTimersByTimeAsync(20_000);
 
     expect(amqp.connect).toHaveBeenCalledTimes(callsBeforeAdvancing);
+  });
+
+  describe('delivery guarantees', () => {
+    async function start() {
+      const channel = buildChannel();
+      (amqp.connect as jest.Mock).mockResolvedValue(buildConnection(channel));
+      consumer.onModuleInit();
+      await flush();
+      const deliver = channel.consume.mock.calls[0][1] as (message: amqp.ConsumeMessage) => void;
+      return { channel, deliver };
+    }
+
+    it('acks a redelivery of an already-sent message without sending the e-mail again', async () => {
+      const { channel, deliver } = await start();
+      const event = buildEvent();
+
+      deliver(buildMessage(event, {}, 'msg-1'));
+      await flush();
+      deliver(buildMessage(event, {}, 'msg-1'));
+      await flush();
+
+      expect(emailService.sendOrderStatusEmail).toHaveBeenCalledTimes(1);
+      expect(channel.ack).toHaveBeenCalledTimes(2);
+    });
+
+    it('does not remember a message whose send failed, so the retry still sends', async () => {
+      jest.useFakeTimers();
+      const channel = buildChannel();
+      (amqp.connect as jest.Mock).mockResolvedValue(buildConnection(channel));
+      emailService.sendOrderStatusEmail.mockRejectedValueOnce(new Error('SMTP down')).mockResolvedValue(undefined);
+      consumer.onModuleInit();
+      await jest.advanceTimersByTimeAsync(0);
+      const deliver = channel.consume.mock.calls[0][1] as (message: amqp.ConsumeMessage) => void;
+
+      deliver(buildMessage(buildEvent(), {}, 'msg-2'));
+      await jest.advanceTimersByTimeAsync(5_000);
+      deliver(buildMessage(buildEvent(), { 'x-retry-count': 1 }, 'msg-2'));
+      await jest.advanceTimersByTimeAsync(5_000);
+
+      expect(emailService.sendOrderStatusEmail).toHaveBeenCalledTimes(2);
+    });
+
+    it('keeps the message id when it republishes for a retry', async () => {
+      jest.useFakeTimers();
+      const channel = buildChannel();
+      (amqp.connect as jest.Mock).mockResolvedValue(buildConnection(channel));
+      emailService.sendOrderStatusEmail.mockRejectedValue(new Error('SMTP down'));
+      consumer.onModuleInit();
+      await jest.advanceTimersByTimeAsync(0);
+      const deliver = channel.consume.mock.calls[0][1] as (message: amqp.ConsumeMessage) => void;
+
+      deliver(buildMessage(buildEvent(), {}, 'msg-3'));
+      await jest.advanceTimersByTimeAsync(5_000);
+
+      expect(channel.sendToQueue).toHaveBeenCalledWith(
+        ORDER_STATUS_CHANGED_QUEUE,
+        expect.anything(),
+        expect.objectContaining({ messageId: 'msg-3' }),
+      );
+    });
+
+    it('never deduplicates a message that carries no id', async () => {
+      const { deliver } = await start();
+
+      deliver(buildMessage(buildEvent()));
+      await flush();
+      deliver(buildMessage(buildEvent()));
+      await flush();
+
+      expect(emailService.sendOrderStatusEmail).toHaveBeenCalledTimes(2);
+    });
+
+    it('sends a permanent e-mail failure straight to the DLQ, without retries or the address in the log', async () => {
+      jest.useFakeTimers();
+      const channel = buildChannel();
+      (amqp.connect as jest.Mock).mockResolvedValue(buildConnection(channel));
+      emailService.sendOrderStatusEmail.mockRejectedValue(new PermanentEmailError('recipient refused'));
+      const errorSpy = jest.spyOn((consumer as unknown as { logger: { error: () => void } }).logger, 'error');
+      consumer.onModuleInit();
+      await jest.advanceTimersByTimeAsync(0);
+      const deliver = channel.consume.mock.calls[0][1] as (message: amqp.ConsumeMessage) => void;
+      const message = buildMessage(buildEvent());
+
+      deliver(message);
+      await jest.advanceTimersByTimeAsync(5_000);
+
+      expect(channel.nack).toHaveBeenCalledWith(message, false, false);
+      expect(channel.sendToQueue).not.toHaveBeenCalled();
+      expect(JSON.stringify(errorSpy.mock.calls)).not.toContain('alice@example.com');
+    });
   });
 });
