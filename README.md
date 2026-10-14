@@ -169,6 +169,12 @@ straight to `order.status.changed.dlq` (dead-letter queue); a transient send fai
 (e.g. SMTP down) is retried with backoff up to `MAX_RETRIES` attempts before also
 landing in the DLQ — no message is ever redelivered in an infinite loop.
 
+Messaging safety: outside `NODE_ENV=development|test` (an unknown value counts as production) the app refuses to boot
+unless `RABBITMQ_URL` is set and uses `amqps://`, and `SMTP_STARTTLS=true` is set; SMTP credentials (`SMTP_USER`/
+`SMTP_PASSWORD`) are never sent over a plain connection in any environment. Every message carries a `messageId`
+(kept across retries) and the consumer skips an id it already e-mailed in this process (RabbitMQ is at-least-once;
+this is a cheap mitigation, not distributed exactly-once). A refused recipient goes straight to the DLQ.
+
 ### Error catalog
 
 **Validation (400)**

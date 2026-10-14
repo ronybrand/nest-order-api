@@ -68,4 +68,70 @@ describe('envConfig', () => {
 
     expect(() => envConfig()).toThrow(/CORS_ALLOWED_ORIGINS/);
   });
+
+  describe('messaging configuration', () => {
+    beforeEach(() => {
+      delete process.env.NODE_ENV;
+      delete process.env.RABBITMQ_URL;
+      delete process.env.SMTP_STARTTLS;
+      delete process.env.SMTP_USER;
+      delete process.env.SMTP_PASSWORD;
+    });
+
+    it('keeps the local broker default and plain local SMTP in development', () => {
+      const config = envConfig();
+
+      expect(config.rabbitmq.url).toBe('amqp://guest:guest@localhost:5672');
+      expect(config.smtp).toMatchObject({ host: 'localhost', port: 1025, starttls: false });
+      expect(config.smtp.user).toBeUndefined();
+    });
+
+    it('refuses to fall back to guest credentials in production', () => {
+      process.env.NODE_ENV = 'production';
+
+      expect(() => envConfig()).toThrow(/RABBITMQ_URL/);
+    });
+
+    it('requires TLS (amqps) to the broker in production', () => {
+      process.env.NODE_ENV = 'production';
+      process.env.RABBITMQ_URL = 'amqp://svc:secret@broker:5672';
+      process.env.SMTP_STARTTLS = 'true';
+
+      expect(() => envConfig()).toThrow(/amqps/);
+    });
+
+    it('treats any unknown NODE_ENV as production', () => {
+      process.env.NODE_ENV = 'staging';
+
+      expect(() => envConfig()).toThrow(/RABBITMQ_URL/);
+    });
+
+    it('requires STARTTLS for SMTP in production', () => {
+      process.env.NODE_ENV = 'production';
+      process.env.RABBITMQ_URL = 'amqps://svc:secret@broker:5671';
+
+      expect(() => envConfig()).toThrow(/SMTP_STARTTLS/);
+    });
+
+    it('never allows SMTP credentials over a plain connection, in any environment', () => {
+      process.env.SMTP_USER = 'mailer';
+      process.env.SMTP_PASSWORD = 'secret';
+
+      expect(() => envConfig()).toThrow(/SMTP_STARTTLS/);
+    });
+
+    it('accepts a fully secured production setup', () => {
+      process.env.NODE_ENV = 'production';
+      process.env.RABBITMQ_URL = 'amqps://svc:secret@broker:5671';
+      process.env.SMTP_STARTTLS = 'true';
+      process.env.SMTP_USER = 'mailer';
+      process.env.SMTP_PASSWORD = 'secret';
+      process.env.SMTP_PORT = '587';
+
+      const config = envConfig();
+
+      expect(config.rabbitmq.url).toBe('amqps://svc:secret@broker:5671');
+      expect(config.smtp).toMatchObject({ starttls: true, user: 'mailer', password: 'secret', port: 587 });
+    });
+  });
 });

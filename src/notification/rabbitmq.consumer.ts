@@ -3,10 +3,12 @@ import { ConfigService } from '@nestjs/config';
 import * as amqp from 'amqplib';
 import { getEnv } from '../config/env.config';
 import { OrderStatusChangedEvent } from '../order/order-status-changed.event';
-import { EmailService } from './email.service';
+import { EmailService, PermanentEmailError } from './email.service';
+import { RecentMessageIds } from './recent-message-ids';
 import { MAX_RETRIES, ORDER_STATUS_CHANGED_QUEUE } from './rabbitmq.constants';
 import { AmqpConnectionManager } from './amqp-connection-manager';
 
+const REMEMBERED_MESSAGES = 10_000;
 const RECONNECT_DELAY_MS = 5_000;
 const RETRY_BACKOFF_MS = 2_000;
 
@@ -47,6 +49,7 @@ export class RabbitMqConsumer implements OnModuleInit, OnModuleDestroy {
   private readonly amqp: AmqpConnectionManager;
   private channel?: amqp.Channel;
   private destroyed = false;
+  private readonly sentMessageIds = new RecentMessageIds(REMEMBERED_MESSAGES);
 
   constructor(
     configService: ConfigService,
@@ -111,10 +114,26 @@ export class RabbitMqConsumer implements OnModuleInit, OnModuleDestroy {
       return;
     }
 
+    const messageId = message.properties.messageId as string | undefined;
+    if (messageId && this.sentMessageIds.has(messageId)) {
+      this.logger.log(`Duplicate delivery of messageId=${messageId} ignored`);
+      this.requireChannel().ack(message);
+      return;
+    }
+
     try {
       await this.emailService.sendOrderStatusEmail(payload);
+      if (messageId) {
+        this.sentMessageIds.add(messageId);
+      }
       this.requireChannel().ack(message);
     } catch (error) {
+      if (error instanceof PermanentEmailError) {
+        // Destinatario recusado nao melhora com retry: DLQ direto (e sem logar o endereco, que e PII).
+        this.logger.error(`Permanent e-mail failure, sending to DLQ: orderId=${payload.orderId}`);
+        this.requireChannel().nack(message, false, false);
+        return;
+      }
       await this.retryOrDeadLetter(message, error as Error);
     }
   }
@@ -134,6 +153,7 @@ export class RabbitMqConsumer implements OnModuleInit, OnModuleDestroy {
     this.requireChannel().sendToQueue(ORDER_STATUS_CHANGED_QUEUE, message.content, {
       persistent: true,
       contentType: 'application/json',
+      messageId: message.properties.messageId as string | undefined,
       headers: { ...message.properties.headers, 'x-retry-count': retryCount },
     });
     this.requireChannel().ack(message);
