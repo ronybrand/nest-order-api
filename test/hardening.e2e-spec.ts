@@ -54,6 +54,9 @@ describe('Hardening (e2e)', () => {
     const { InitialSchema1690000000000 } = await import(
       '../src/database/migrations/1690000000000-InitialSchema'
     );
+    const { AddCustomerVersion1789773004834 } = await import(
+      '../src/database/migrations/1789773004834-AddCustomerVersion'
+    );
     dataSource = new DataSource({
       type: 'postgres',
       host: process.env.DB_HOST,
@@ -61,7 +64,7 @@ describe('Hardening (e2e)', () => {
       username: process.env.DB_USERNAME,
       password: process.env.DB_PASSWORD,
       database: process.env.DB_DATABASE,
-      migrations: [InitialSchema1690000000000],
+      migrations: [InitialSchema1690000000000, AddCustomerVersion1789773004834],
     });
     await dataSource.initialize();
     await dataSource.runMigrations();
