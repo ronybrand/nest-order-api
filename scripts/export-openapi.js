@@ -51,6 +51,7 @@ async function main() {
   process.env.DB_DATABASE = 'nest_order_api_docs';
   process.env.JWT_PUBLIC_KEY_PATH = publicKeyPath;
   process.env.JWT_AUDIENCE = 'nest-order-api';
+  process.env.JWT_ISSUER = 'nest-order-api-docs';
   process.env.CORS_ALLOWED_ORIGINS = 'http://localhost:3000';
   process.env.RABBITMQ_URL = 'amqp://guest:guest@127.0.0.1:5672';
   process.env.SMTP_HOST = '127.0.0.1';
