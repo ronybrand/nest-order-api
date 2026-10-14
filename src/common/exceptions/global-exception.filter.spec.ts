@@ -1,4 +1,4 @@
-import { ArgumentsHost, BadRequestException, HttpStatus } from '@nestjs/common';
+import { ArgumentsHost, BadRequestException, HttpStatus, UnauthorizedException } from '@nestjs/common';
 import { OptimisticLockVersionMismatchError, QueryFailedError } from 'typeorm';
 import { GlobalExceptionFilter } from './global-exception.filter';
 import { ErrorCode } from './error-code.enum';
@@ -34,6 +34,20 @@ describe('GlobalExceptionFilter', () => {
 
   beforeEach(() => {
     filter = new GlobalExceptionFilter();
+  });
+
+  it('maps an authentication failure to 401 AUTHORIZATION_UNAUTHENTICATED without leaking the reason', () => {
+    const { host, response } = mockHost();
+
+    filter.catch(new UnauthorizedException('jwt expired'), host);
+
+    expect(response.status).toHaveBeenCalledWith(HttpStatus.UNAUTHORIZED);
+    expect(response.json).toHaveBeenCalledWith(
+      expect.objectContaining({
+        errorCode: ErrorCode.AUTHORIZATION_UNAUTHENTICATED,
+        message: 'Authentication required',
+      }),
+    );
   });
 
   it('maps OptimisticLockVersionMismatchError to 409 CONFLICT_CONCURRENT_MODIFICATION', () => {
