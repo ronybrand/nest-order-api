@@ -23,7 +23,10 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 # npm, npx and corepack ship with the base image and are not used at runtime (CMD is plain
 # node); Trivy reports ten HIGH findings, all in npm's own bundled packages, so they go.
-RUN npm ci --omit=dev     && npm cache clean --force     && rm -rf /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/corepack               /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack
+RUN npm ci --omit=dev \
+    && npm cache clean --force \
+    && rm -rf /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/corepack \
+              /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack
 
 COPY --from=build /workspace/dist ./dist
 USER app
