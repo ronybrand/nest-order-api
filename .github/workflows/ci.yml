@@ -8,9 +8,15 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  # A newer push to a pull request makes the older run pointless; a run on main is never cancelled.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   lint:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
@@ -22,6 +28,7 @@ jobs:
 
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
@@ -52,9 +59,12 @@ jobs:
   # atual das entities, e falha se o TypeORM encontrar alguma diferenca pra gerar.
   migration:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     services:
       postgres:
-        image: postgres:16-alpine
+        # Digest mirrors docker-compose.yml: the same image runs locally and here, and a retagged upstream
+        # tag cannot change what the job runs against.
+        image: postgres:16-alpine@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
@@ -95,6 +105,7 @@ jobs:
   docker-build:
     needs: test
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     # Build-only on PRs (validates the Dockerfile still produces a working image); push to GHCR
     # only from main, where GITHUB_TOKEN has package-write on this repo by default - a fork's PR
     # run gets a read-only token, so pushing there would just fail, not add security value.
@@ -143,6 +154,7 @@ jobs:
     needs: test
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
       pages: write
       id-token: write
